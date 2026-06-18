@@ -1,0 +1,15 @@
+{
+  "name": "ooop-admin-workspace",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "sh scripts/dev.sh",
+    "api:dev": "cd api && go run ./cmd/api",
+    "api:migrate": "cd api && go run ./cmd/migrate",
+    "api:test": "cd api && go test ./...",
+    "web:dev": "cd web-admin && npm run dev -- --host 0.0.0.0",
+    "build": "sh scripts/build-all.sh",
+    "build:api": "sh scripts/build-api.sh",
+    "build:web": "sh scripts/build-web-admin.sh"
+  }
+}

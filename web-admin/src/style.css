@@ -1,0 +1,144 @@
+/* Google Fonts – Lora + Raleway */
+@import url('https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600;700&family=Raleway:wght@300;400;500;600;700&display=swap');
+
+/* ── CSS Custom Properties (set by theme store via JS) ── */
+:root {
+  --gradient-bg: linear-gradient(145deg, #a8d540 0%, #a8d540 48%, #a8d540 100%);
+  --cloud-nebula-op: 0.24;
+  --cloud-wisp-color: rgba(255, 255, 255, 0.08);
+  --color-primary: #A0CC1A;
+  --color-primary-light: #A0CC1A;
+  --color-glow: hsla(87, 77%, 60%, 0.35);
+  --glass-bg: rgba(6, 5, 5, 0.055)
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --glass-hover: rgba(255, 255, 255, 0.09);
+  --glass-active: rgba(255, 255, 255, 0.14);
+  --glass-card: rgba(255, 255, 255, 0.05);
+  --text-primary: #F1F5F9;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --divider: rgba(255, 255, 255, 0.08);
+
+  font-family: 'Lora', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+/* ── CSS Custom Properties (set by theme store via JS) ── */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #app {
+  width: 100%;
+  min-width: 1200px;
+  min-height: 100vh;
+}
+
+body {
+  background: var(--gradient-bg);
+  background-attachment: fixed;
+  color: var(--text-primary);
+  transition: color 0.3s ease;
+}
+
+a { color: inherit; text-decoration: none; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--glass-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ── Glass card utility ── */
+.glass-card {
+  background: var(--glass-card);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  transition: background 0.3s ease, box-shadow 0.3s ease;
+}
+
+.glass-card:hover {
+  background: var(--glass-hover);
+  box-shadow: 0 8px 32px var(--color-glow);
+}
+
+/* ── Element Plus overrides ── */
+.el-card {
+  background: var(--glass-card) !important;
+  border: 1px solid var(--glass-border) !important;
+  border-radius: 16px !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: var(--text-primary) !important;
+  transition: all 0.3s ease;
+}
+
+.el-card__header {
+  border-bottom: 1px solid var(--divider) !important;
+  color: var(--text-primary) !important;
+}
+
+.el-card__body {
+  color: var(--text-primary) !important;
+}
+
+.el-table {
+  background: transparent !important;
+  color: var(--text-secondary) !important;
+}
+
+.el-table th.el-table__cell {
+  background: var(--glass-bg) !important;
+  color: var(--text-muted) !important;
+  border-bottom: 1px solid var(--divider) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.el-table td.el-table__cell {
+  border-bottom: 1px solid var(--divider) !important;
+  color: var(--text-secondary) !important;
+}
+
+.el-table--enable-row-hover .el-table__body tr:hover > td {
+  background: var(--glass-hover) !important;
+}
+
+.el-table__inner-wrapper::before {
+  display: none !important;
+}
+.m-t-10 {
+  margin-top: 10px;
+}
+.m-t-20 {
+  margin-top: 20px;
+}
+.m-t-30 {
+  margin-top: 30px;
+}
+.m-b-10{
+  margin-bottom: 10px;
+}
+.m-b-20{
+  margin-bottom: 20px;
+}
+/* Reduce Motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
