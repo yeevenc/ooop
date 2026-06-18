@@ -60,8 +60,8 @@ func (h *Handler) sendCode(c *gin.Context) {
 
 func (h *Handler) mobileCodeLogin(c *gin.Context) {
 	var req struct {
-		Phone string `json:"phone"`
-		Code  string `json:"code"`
+		Phone    string `json:"phone"`
+		Code     string `json:"code"`
 		Platform string `json:"platform"`
 		DeviceNo string `json:"device_no"`
 	}
@@ -164,7 +164,8 @@ func writeServiceResult(c *gin.Context, data interface{}, err error) {
 	case errors.Is(err, ErrInvalidPhone),
 		errors.Is(err, ErrInvalidPassword),
 		errors.Is(err, ErrInvalidCode),
-		errors.Is(err, ErrPhoneExists):
+		errors.Is(err, ErrPhoneExists),
+		errors.Is(err, ErrReservedUsername):
 		httpx.Fail(c, http.StatusBadRequest, 400002, err.Error())
 	case errors.Is(err, ErrInvalidAccount):
 		httpx.Fail(c, http.StatusUnauthorized, 401003, err.Error())

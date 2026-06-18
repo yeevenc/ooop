@@ -64,6 +64,7 @@ func (r *GormUserRepository) List(ctx context.Context, query UserListQuery) ([]U
 	var items []User
 	var total int64
 	db := r.db.WithContext(ctx).Model(&User{})
+	db = db.Where("username IS NULL OR username <> ?", ReservedAdminUsername)
 
 	if query.Keyword != "" {
 		keyword := "%" + query.Keyword + "%"

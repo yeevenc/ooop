@@ -89,6 +89,15 @@ func TestRegisterByPasswordCreatesUserAndRejectsDuplicatePhone(t *testing.T) {
 	}
 }
 
+func TestRegisterByPasswordRejectsReservedUsername(t *testing.T) {
+	service := newTestAuthService()
+
+	_, err := service.RegisterByPassword(context.Background(), "13500135000", ReservedAdminUsername, "password123", ClientMeta{})
+	if !errors.Is(err, ErrReservedUsername) {
+		t.Fatalf("RegisterByPassword() error = %v, want ErrReservedUsername", err)
+	}
+}
+
 func TestMobileCodeLoginConsumesValidCode(t *testing.T) {
 	service := newTestAuthService()
 	codeRepo := service.loginCodes.(*memoryLoginCodeRepository)
@@ -118,6 +127,14 @@ func TestListUsersReturnsPagedPublicUsers(t *testing.T) {
 	}
 	if _, err := service.RegisterByPassword(ctx, "13600136000", "second_user", "password123", ClientMeta{}); err != nil {
 		t.Fatalf("RegisterByPassword(second) error = %v", err)
+	}
+	if err := service.users.Create(ctx, &User{
+		Phone:          "13500135000",
+		Username:       stringPtr(ReservedAdminUsername),
+		Status:         UserStatusEnabled,
+		RegisterSource: RegisterSourcePassword,
+	}); err != nil {
+		t.Fatalf("seed reserved user error = %v", err)
 	}
 
 	status := UserStatusEnabled
@@ -224,7 +241,13 @@ func (r *memoryUserRepository) List(ctx context.Context, query UserListQuery) ([
 
 	list := make([]User, 0, len(r.items))
 	for _, item := range r.items {
-		if query.Keyword != "" && !strings.Contains(item.Phone, query.Keyword) && (item.Username == nil || !strings.Contains(*item.Username, query.Keyword)) {
+		if item.Username != nil && strings.EqualFold(*item.Username, ReservedAdminUsername) {
+			continue
+		}
+		if query.Keyword != "" &&
+			!strings.Contains(item.Phone, query.Keyword) &&
+			(item.Username == nil || !strings.Contains(*item.Username, query.Keyword)) &&
+			!strings.Contains(item.Nickname, query.Keyword) {
 			continue
 		}
 		if query.Status != nil && item.Status != *query.Status {
@@ -349,6 +372,10 @@ func (r *memoryLoginCodeRepository) seed(phone string, scene string, codeHash st
 type memoryRefreshTokenRepository struct {
 	mu    sync.Mutex
 	items map[string]RefreshToken
+}
+
+func stringPtr(value string) *string {
+	return &value
 }
 
 func newMemoryRefreshTokenRepository() *memoryRefreshTokenRepository {

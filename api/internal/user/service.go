@@ -18,12 +18,13 @@ import (
 const LoginCodeSceneLogin = "login"
 
 var (
-	ErrInvalidPhone    = errors.New("手机号格式不正确")
-	ErrInvalidPassword = errors.New("密码长度不能少于 8 位")
-	ErrInvalidAccount  = errors.New("账号或密码错误")
-	ErrInvalidCode     = errors.New("验证码错误或已过期")
-	ErrDisabledUser    = errors.New("账号已被禁用")
-	ErrPhoneExists     = errors.New("手机号已注册")
+	ErrInvalidPhone     = errors.New("手机号格式不正确")
+	ErrInvalidPassword  = errors.New("密码长度不能少于 8 位")
+	ErrInvalidAccount   = errors.New("账号或密码错误")
+	ErrInvalidCode      = errors.New("验证码错误或已过期")
+	ErrDisabledUser     = errors.New("账号已被禁用")
+	ErrPhoneExists      = errors.New("手机号已注册")
+	ErrReservedUsername = errors.New("该用户名不可使用")
 )
 
 var phonePattern = regexp.MustCompile(`^1[3-9]\d{9}$`)
@@ -149,6 +150,9 @@ func (s *AuthService) RegisterByPassword(ctx context.Context, phone string, user
 	if len(password) < 8 {
 		return LoginResult{}, ErrInvalidPassword
 	}
+	if isReservedUsername(username) {
+		return LoginResult{}, ErrReservedUsername
+	}
 
 	_, err := s.users.FindByPhone(ctx, phone)
 	if err == nil {
@@ -208,6 +212,9 @@ func (s *AuthService) SetPassword(ctx context.Context, userID int64, username st
 	username = strings.TrimSpace(username)
 	if len(password) < 8 {
 		return PublicUser{}, ErrInvalidPassword
+	}
+	if isReservedUsername(username) {
+		return PublicUser{}, ErrReservedUsername
 	}
 	hash, err := s.passwordHasher.Hash(password)
 	if err != nil {
@@ -359,6 +366,10 @@ func normalizePhone(phone string) string {
 
 func normalizeMetaValue(value string) string {
 	return strings.TrimSpace(value)
+}
+
+func isReservedUsername(username string) bool {
+	return strings.EqualFold(strings.TrimSpace(username), ReservedAdminUsername)
 }
 
 func isValidPhone(phone string) bool {

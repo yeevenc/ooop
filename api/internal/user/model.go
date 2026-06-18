@@ -8,6 +8,9 @@ const (
 	RegisterSourceAliyunMobile = "aliyun_mobile"
 	RegisterSourceMobileCode   = "mobile_code"
 	RegisterSourcePassword     = "password"
+
+	// admin 是后台默认账号，禁止进入 App 用户体系。
+	ReservedAdminUsername = "admin"
 )
 
 type User struct {
