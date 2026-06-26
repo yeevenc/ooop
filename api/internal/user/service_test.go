@@ -428,6 +428,20 @@ func (r *memoryUserRepository) UpdateProfile(ctx context.Context, id int64, upda
 	return nil
 }
 
+func (r *memoryUserRepository) UpdatePushRegistration(ctx context.Context, id int64, platform string, registrationID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item, ok := r.items[id]
+	if !ok {
+		return ErrNotFound
+	}
+	item.PushPlatform = platform
+	item.RegistrationID = registrationID
+	item.UpdatedAt = time.Now()
+	r.items[id] = item
+	return nil
+}
+
 func (r *memoryUserRepository) TouchLastLogin(ctx context.Context, id int64, loginAt time.Time, meta ClientMeta) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

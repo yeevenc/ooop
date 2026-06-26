@@ -53,6 +53,7 @@ func main() {
 
 	aliyunClient := provider.NewAliyunRPCClient(cfg.Aliyun.AccessKeyID, cfg.Aliyun.AccessKeySecret)
 	mobileVerifier := provider.NewJiguangMobileVerifier(cfg.Jiguang)
+	jpushPusher := provider.NewJiguangPusher(cfg.Jiguang)
 	smsSender := provider.NewAliyunSMSSender(aliyunClient, cfg.Aliyun.SMS)
 
 	authService := user.NewAuthService(user.AuthServiceOptions{
@@ -67,7 +68,7 @@ func main() {
 	})
 	adminService := admin.NewService(adminRepo, passwordHasher, adminTokenManager)
 	activityService := activity.NewService(activityRepo, userRepo)
-	messageService := message.NewService(messageRepo)
+	messageService := message.NewService(messageRepo, userRepo, jpushPusher)
 	feedbackService := feedback.NewService(feedbackRepo, authService)
 	activityService.SetReviewNotifier(messageService)
 	// 后台账号独立写入 admin_users，不再污染 APP 用户表。
@@ -96,7 +97,7 @@ func main() {
 	activity.NewHandler(activityService, tokenManager).Register(api)
 	message.NewHandler(messageService, tokenManager).Register(api)
 	feedback.NewHandler(feedbackService, tokenManager, adminTokenManager).Register(api)
-	upload.NewHandler(tokenManager).Register(api)
+	upload.NewHandler().Register(api)
 	admin.NewHandler(adminService, authService, activityService, adminTokenManager).Register(api)
 
 	server := &http.Server{

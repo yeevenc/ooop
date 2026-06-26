@@ -37,6 +37,7 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	userGroup.GET("/profile", h.profile)
 	userGroup.PUT("/profile", h.updateProfile)
 	userGroup.PUT("/phone", h.changePhone)
+	userGroup.PUT("/push-registration", h.bindPushRegistration)
 
 	// 公开的他人用户资料（安全子集），用于用户主页展示。
 	api.GET("/users/:id", h.publicProfile)
@@ -210,6 +211,23 @@ func (h *Handler) changePhone(c *gin.Context) {
 	}
 	result, err := h.service.ChangePhone(c.Request.Context(), userID, req.NewPhone, req.Code)
 	writeServiceResult(c, result, err)
+}
+
+func (h *Handler) bindPushRegistration(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+	var req struct {
+		Platform       string `json:"platform"`
+		RegistrationID string `json:"registration_id"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+	err := h.service.BindPushRegistration(c.Request.Context(), userID, req.Platform, req.RegistrationID)
+	writeServiceResult(c, gin.H{"bound": true}, err)
 }
 
 func bindJSON(c *gin.Context, target interface{}) bool {

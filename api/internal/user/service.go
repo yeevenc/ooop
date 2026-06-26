@@ -404,6 +404,22 @@ func (s *AuthService) UpdateProfile(ctx context.Context, userID int64, update Pr
 	return ToPublicUserWithStats(item, stats), nil
 }
 
+func (s *AuthService) BindPushRegistration(ctx context.Context, userID int64, platform string, registrationID string) error {
+	registrationID = strings.TrimSpace(registrationID)
+	platform = normalizeMetaValue(platform)
+
+	if registrationID == "" {
+		return ErrInvalidProfile
+	}
+
+	_, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	return s.users.UpdatePushRegistration(ctx, userID, platform, registrationID)
+}
+
 func (s *AuthService) ListUsers(ctx context.Context, query UserListQuery) (UserListResult, error) {
 	query.Keyword = strings.TrimSpace(query.Keyword)
 	if query.Page <= 0 {

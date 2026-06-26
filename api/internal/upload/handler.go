@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"ooop-admin-api/internal/auth"
 	"ooop-admin-api/internal/httpx"
 )
 
@@ -30,7 +29,6 @@ var (
 )
 
 type Handler struct {
-	tokenManager *auth.TokenManager
 }
 
 type ImageResult struct {
@@ -38,13 +36,12 @@ type ImageResult struct {
 	Path string `json:"path"`
 }
 
-func NewHandler(tokenManager *auth.TokenManager) *Handler {
-	return &Handler{tokenManager: tokenManager}
+func NewHandler() *Handler {
+	return &Handler{}
 }
 
 func (h *Handler) Register(api *gin.RouterGroup) {
 	group := api.Group("/upload")
-	group.Use(auth.Middleware(h.tokenManager))
 	group.POST("/image", h.image)
 }
 
@@ -100,15 +97,29 @@ func validateImage(file *multipart.FileHeader) error {
 }
 
 func absoluteURL(c *gin.Context, path string) string {
+	if baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("APP_PUBLIC_BASE_URL")), "/"); baseURL != "" {
+		return baseURL + path
+	}
+
 	scheme := "http"
 	if c.Request.TLS != nil {
 		scheme = "https"
 	}
 	if forwardedProto := c.GetHeader("X-Forwarded-Proto"); forwardedProto != "" {
-		scheme = forwardedProto
+		scheme = firstForwardedValue(forwardedProto)
 	}
 
-	return scheme + "://" + c.Request.Host + path
+	host := c.Request.Host
+	if forwardedHost := c.GetHeader("X-Forwarded-Host"); forwardedHost != "" {
+		host = firstForwardedValue(forwardedHost)
+	}
+
+	return scheme + "://" + host + path
+}
+
+func firstForwardedValue(value string) string {
+	parts := strings.Split(value, ",")
+	return strings.TrimSpace(parts[0])
 }
 
 func writeError(c *gin.Context, err error) {

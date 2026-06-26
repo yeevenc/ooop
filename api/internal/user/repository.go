@@ -20,6 +20,7 @@ type UserRepository interface {
 	UpdatePassword(ctx context.Context, id int64, username string, passwordHash string) error
 	UpdatePhone(ctx context.Context, id int64, phone string) error
 	UpdateProfile(ctx context.Context, id int64, update ProfileUpdate) error
+	UpdatePushRegistration(ctx context.Context, id int64, platform string, registrationID string) error
 	TouchLastLogin(ctx context.Context, id int64, loginAt time.Time, meta ClientMeta) error
 }
 
@@ -115,6 +116,14 @@ func (r *GormUserRepository) UpdateProfile(ctx context.Context, id int64, update
 	updates := profileUpdateColumns(update)
 	if len(updates) == 0 {
 		return nil
+	}
+	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *GormUserRepository) UpdatePushRegistration(ctx context.Context, id int64, platform string, registrationID string) error {
+	updates := map[string]interface{}{
+		"push_platform":   normalizeMetaValue(platform),
+		"registration_id": normalizeMetaValue(registrationID),
 	}
 	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(updates).Error
 }

@@ -82,6 +82,7 @@ type Service struct {
 
 type ReviewNotifier interface {
 	CreateActivityReviewMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, approved bool) error
+	CreateActivityRegistrationMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, applicantName string) error
 }
 
 type CreateInput struct {
@@ -364,20 +365,28 @@ func (s *Service) JoinActivity(ctx context.Context, userID, activityID int64, co
 		existing.Remark = remark
 		existing.RejectReason = ""
 		existing.Status = ParticipantStatusJoined
-		return s.activities.SaveParticipant(ctx, &existing)
+		if err := s.activities.SaveParticipant(ctx, &existing); err != nil {
+			return err
+		}
+		s.notifyOrganizerRegistration(ctx, item, userID)
+		return nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return err
 	}
 
-	return s.activities.CreateParticipant(ctx, &ActivityParticipant{
+	if err := s.activities.CreateParticipant(ctx, &ActivityParticipant{
 		ActivityID:   activityID,
 		UserID:       userID,
 		Count:        count,
 		Remark:       remark,
 		RejectReason: "",
 		Status:       ParticipantStatusJoined,
-	})
+	}); err != nil {
+		return err
+	}
+	s.notifyOrganizerRegistration(ctx, item, userID)
+	return nil
 }
 
 // CancelParticipation 参加人取消参加活动；活动开始前可取消，已审核通过时同步扣减人数。
@@ -630,6 +639,26 @@ func displayName(u user.User, fallbackID int64) string {
 		name = "用户" + strconv.FormatInt(fallbackID, 10)
 	}
 	return name
+}
+
+func (s *Service) notifyOrganizerRegistration(ctx context.Context, item Activity, applicantUserID int64) {
+	if s.reviewNotifier == nil {
+		return
+	}
+
+	applicantName := ""
+	applicant, err := s.users.FindByID(ctx, applicantUserID)
+	if err == nil {
+		applicantName = displayName(applicant, applicantUserID)
+	}
+
+	_ = s.reviewNotifier.CreateActivityRegistrationMessage(
+		ctx,
+		item.UserID,
+		item.ID,
+		item.Title,
+		applicantName,
+	)
 }
 
 // relativeTime 把时间转成相对文案（刚刚/x分钟前/x小时前/x天前）。

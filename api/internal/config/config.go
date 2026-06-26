@@ -79,6 +79,7 @@ type JiguangConfig struct {
 	AppKey       string
 	MasterSecret string
 	VerifyURL    string
+	PushURL      string
 	PrivateKey   string
 }
 
@@ -132,6 +133,7 @@ func Load() Config {
 			AppKey:       getEnv("JIGUANG_APP_KEY", ""),
 			MasterSecret: getEnv("JIGUANG_MASTER_SECRET", ""),
 			VerifyURL:    getEnv("JIGUANG_VERIFY_URL", "https://api.verification.jpush.cn/v1/web/loginTokenVerify"),
+			PushURL:      getEnv("JIGUANG_PUSH_URL", "https://api.jpush.cn/v3/push"),
 			PrivateKey:   normalizePrivateKey(getEnv("JIGUANG_PRIVATE_KEY", "")),
 		},
 	}

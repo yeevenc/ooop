@@ -32,6 +32,8 @@ type User struct {
 	Bio            string     `gorm:"size:255;not null;default:''" json:"bio"`
 	Platform       string     `gorm:"size:32;not null;default:''" json:"platform"`
 	DeviceNo       string     `gorm:"size:128;not null;default:''" json:"device_no"`
+	PushPlatform   string     `gorm:"size:32;not null;default:''" json:"push_platform"`
+	RegistrationID string     `gorm:"size:128;not null;default:''" json:"registration_id"`
 	PasswordHash   string     `gorm:"size:255" json:"-"`
 	Status         int        `gorm:"not null;default:1" json:"status"`
 	CreditScore    int        `gorm:"not null;default:100" json:"credit_score"` // 靠谱值（满分 100，评分逻辑后续接入）
