@@ -99,6 +99,7 @@ import {
 } from "element-plus";
 import type { UploadProps, UploadUserFile } from "element-plus"; // 类型导入
 import { useSleepUserStore } from '@/stores/user'
+import { getUploadImageAction, resolveUploadURL } from '@/utils/upload'
 const userStore = useSleepUserStore()
 const props = defineProps({
   // 父组件 v-model 绑定的值
@@ -141,7 +142,7 @@ const headers = {
   Authorization: `Bearer ${userStore.token || ""}`
 };
 const uploadRef = ref();
-const action = ref(import.meta.env.VITE_AP_BASE_FILE_URL);
+const action = ref(getUploadImageAction());
 const data = ref({
   is_source: 'mindcare',
 });
@@ -214,7 +215,7 @@ const handlePictureCardRemove: UploadProps["onRemove"] = (
   uploadFiles
 ) => {
   if (props.multiple) {
-    const urls = (uploadFiles as any[]).map(file => file.response?.data || file.url).filter(Boolean);
+    const urls = (uploadFiles as any[]).map(file => resolveUploadURL(file.response?.data) || file.url).filter(Boolean);
     emit("update:modelValue", urls); // 更新父组件的值
   } else {
     emit("update:modelValue", "");
@@ -245,7 +246,7 @@ const handleAvatarSuccess: UploadProps['onSuccess'] = (response, _uploadFile, up
     if (isAllUploaded) {
       // 获取所有已上传文件的URL
       const urls = uploadFiles
-        .map((file: any) => file.response?.data || file.url)
+        .map((file: any) => resolveUploadURL(file.response?.data) || file.url)
         .filter(Boolean)
 
       // 更新状态
@@ -255,7 +256,7 @@ const handleAvatarSuccess: UploadProps['onSuccess'] = (response, _uploadFile, up
       state.previewUrls = urls
     }
   } else {
-    const url = response.data
+    const url = resolveUploadURL(response.data)
     emit("update:modelValue", url)
     state.previewUrls = [url]
     state.uploadLoading = false

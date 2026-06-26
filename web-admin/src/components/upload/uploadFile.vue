@@ -122,6 +122,7 @@ import {
     ElMessageBox,
    type UploadProps
 } from 'element-plus'
+import { getUploadImageAction, resolveUploadURL } from '@/utils/upload'
 
 // 定义props
 const props = withDefaults(defineProps<{
@@ -161,7 +162,7 @@ const emit = defineEmits<{
     'exceed': [files: FileList, fileList: any[]]
 }>()
 // 上传文件接口地址
-const uploadUrl = import.meta.env.VITE_AP_BASE_FILE
+const uploadUrl = getUploadImageAction()
 // 内部文件列表
 const fileList = ref<any[]>([])
 
@@ -214,20 +215,20 @@ const handleSuccess = (response: any, file: any, uploadFileList: any[]) => {
     // 更新内部文件列表
     const newFileList = uploadFileList.map(item => ({
         ...item,
-        url: item.response?.data || item.url,
+        url: resolveUploadURL(item.response?.data) || item.url,
         response: {
             ...item.response,
-            data: item.response?.data || item.url
+            data: resolveUploadURL(item.response?.data) || item.url
         }
     }))
     fileList.value = newFileList
 
     // 更新v-model绑定的值
     if (props.multiple) {
-        const urls = newFileList.map(item => item.response?.data || item.url).filter(Boolean)
+        const urls = newFileList.map(item => resolveUploadURL(item.response?.data) || item.url).filter(Boolean)
         emit('update:modelValue', urls)
     } else {
-        const url = response?.data || file?.response?.data || file?.url
+        const url = resolveUploadURL(response?.data) || resolveUploadURL(file?.response?.data) || file?.url
         if (url) {
             emit('update:modelValue', url)
         }
