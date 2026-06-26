@@ -16,6 +16,7 @@ type Config struct {
 	JWT      JWTConfig
 	Auth     AuthConfig
 	Aliyun   AliyunConfig
+	Jiguang  JiguangConfig
 }
 
 type AppConfig struct {
@@ -39,11 +40,9 @@ type DatabaseConfig struct {
 }
 
 type JWTConfig struct {
-	Secret             string
-	AccessTokenTTL     time.Duration
-	RefreshTokenTTL    time.Duration
-	RefreshTokenPepper string
-	Issuer             string
+	Secret         string
+	AccessTokenTTL time.Duration
+	Issuer         string
 }
 
 type AuthConfig struct {
@@ -62,9 +61,25 @@ type AliyunMobileConfig struct {
 }
 
 type AliyunSMSConfig struct {
-	Endpoint     string
-	SignName     string
-	TemplateCode string
+	Endpoint                    string
+	SignName                    string
+	LoginTemplateCode           string
+	ChangePhoneTemplateCode     string
+	ResetPasswordTemplateCode   string
+	BindNewPhoneTemplateCode    string
+	VerifyBindPhoneTemplateCode string
+	ValidSeconds                int
+	CodeLength                  int
+	IntervalSeconds             int
+	DuplicatePolicy             int
+	SchemeName                  string
+}
+
+type JiguangConfig struct {
+	AppKey       string
+	MasterSecret string
+	VerifyURL    string
+	PrivateKey   string
 }
 
 func Load() Config {
@@ -85,11 +100,9 @@ func Load() Config {
 			AutoMigrate: getBoolEnv("MYSQL_AUTO_MIGRATE", false),
 		},
 		JWT: JWTConfig{
-			Secret:             getEnv("JWT_SECRET", "change-me-before-production"),
-			AccessTokenTTL:     getDurationEnv("JWT_ACCESS_TOKEN_TTL", 2*time.Hour),
-			RefreshTokenTTL:    getDurationEnv("JWT_REFRESH_TOKEN_TTL", 30*24*time.Hour),
-			RefreshTokenPepper: getEnv("JWT_REFRESH_TOKEN_PEPPER", "change-me-refresh-pepper"),
-			Issuer:             getEnv("JWT_ISSUER", "ooop-admin-api"),
+			Secret:         getEnv("JWT_SECRET", "change-me-before-production"),
+			AccessTokenTTL: getDurationEnv("JWT_ACCESS_TOKEN_TTL", 30*24*time.Hour),
+			Issuer:         getEnv("JWT_ISSUER", "ooop-admin-api"),
 		},
 		Auth: AuthConfig{
 			CodeSecret: getEnv("AUTH_CODE_SECRET", "change-me-code-secret"),
@@ -101,12 +114,31 @@ func Load() Config {
 				Endpoint: getEnv("ALIYUN_MOBILE_ENDPOINT", "dypnsapi.aliyuncs.com"),
 			},
 			SMS: AliyunSMSConfig{
-				Endpoint:     getEnv("ALIYUN_SMS_ENDPOINT", "dysmsapi.aliyuncs.com"),
-				SignName:     getEnv("ALIYUN_SMS_SIGN_NAME", ""),
-				TemplateCode: getEnv("ALIYUN_SMS_TEMPLATE_CODE", ""),
+				Endpoint:                    getEnv("ALIYUN_SMS_ENDPOINT", "dypnsapi.aliyuncs.com"),
+				SignName:                    getEnv("ALIYUN_SMS_SIGN_NAME", "速通互联验证码"),
+				LoginTemplateCode:           getEnv("ALIYUN_SMS_LOGIN_TEMPLATE_CODE", "100001"),
+				ChangePhoneTemplateCode:     getEnv("ALIYUN_SMS_CHANGE_PHONE_TEMPLATE_CODE", "100002"),
+				ResetPasswordTemplateCode:   getEnv("ALIYUN_SMS_RESET_PASSWORD_TEMPLATE_CODE", "100003"),
+				BindNewPhoneTemplateCode:    getEnv("ALIYUN_SMS_BIND_NEW_PHONE_TEMPLATE_CODE", "100004"),
+				VerifyBindPhoneTemplateCode: getEnv("ALIYUN_SMS_VERIFY_BIND_PHONE_TEMPLATE_CODE", "100005"),
+				ValidSeconds:                getIntEnv("ALIYUN_SMS_VALID_SECONDS", 300),
+				CodeLength:                  getIntEnv("ALIYUN_SMS_CODE_LENGTH", 6),
+				IntervalSeconds:             getIntEnv("ALIYUN_SMS_INTERVAL_SECONDS", 60),
+				DuplicatePolicy:             getIntEnv("ALIYUN_SMS_DUPLICATE_POLICY", 1),
+				SchemeName:                  getEnv("ALIYUN_SMS_SCHEME_NAME", ""),
 			},
 		},
+		Jiguang: JiguangConfig{
+			AppKey:       getEnv("JIGUANG_APP_KEY", ""),
+			MasterSecret: getEnv("JIGUANG_MASTER_SECRET", ""),
+			VerifyURL:    getEnv("JIGUANG_VERIFY_URL", "https://api.verification.jpush.cn/v1/web/loginTokenVerify"),
+			PrivateKey:   normalizePrivateKey(getEnv("JIGUANG_PRIVATE_KEY", "")),
+		},
 	}
+}
+
+func normalizePrivateKey(value string) string {
+	return strings.ReplaceAll(strings.TrimSpace(value), `\n`, "\n")
 }
 
 func getEnv(key string, fallback string) string {
@@ -144,6 +176,18 @@ func getDurationEnv(key string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return time.Duration(seconds) * time.Second
+}
+
+func getIntEnv(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
 
 func getBoolEnv(key string, fallback bool) bool {

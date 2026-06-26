@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"ooop-admin-api/internal/auth"
 	"ooop-admin-api/internal/provider"
@@ -21,18 +22,20 @@ var (
 	ErrInvalidPhone     = errors.New("手机号格式不正确")
 	ErrInvalidPassword  = errors.New("密码长度不能少于 8 位")
 	ErrInvalidAccount   = errors.New("账号或密码错误")
+	ErrInvalidOldPass   = errors.New("当前密码不正确")
 	ErrInvalidCode      = errors.New("验证码错误或已过期")
 	ErrDisabledUser     = errors.New("账号已被禁用")
 	ErrPhoneExists      = errors.New("手机号已注册")
 	ErrReservedUsername = errors.New("该用户名不可使用")
+	ErrInvalidProfile   = errors.New("资料字段不合法")
 )
 
 var phonePattern = regexp.MustCompile(`^1[3-9]\d{9}$`)
 
 type AuthServiceOptions struct {
 	Users          UserRepository
+	Stats          UserStatsRepository
 	LoginCodes     LoginCodeRepository
-	RefreshTokens  RefreshTokenRepository
 	PasswordHasher auth.PasswordHasher
 	TokenManager   *auth.TokenManager
 	MobileVerifier provider.MobileVerifier
@@ -42,8 +45,8 @@ type AuthServiceOptions struct {
 
 type AuthService struct {
 	users          UserRepository
+	stats          UserStatsRepository
 	loginCodes     LoginCodeRepository
-	refreshTokens  RefreshTokenRepository
 	passwordHasher auth.PasswordHasher
 	tokenManager   *auth.TokenManager
 	mobileVerifier provider.MobileVerifier
@@ -52,8 +55,10 @@ type AuthService struct {
 }
 
 type LoginResult struct {
-	User   PublicUser     `json:"user"`
-	Tokens auth.TokenPair `json:"tokens"`
+	User        PublicUser `json:"user"`
+	Tokens      auth.Token `json:"tokens"`
+	MaskedPhone string     `json:"masked_phone,omitempty"`
+	Operator    string     `json:"operator,omitempty"`
 }
 
 type UserListQuery struct {
@@ -70,16 +75,43 @@ type UserListResult struct {
 	PageSize int          `json:"page_size"`
 }
 
+type UserStatsRepository interface {
+	CountPublishedByUser(ctx context.Context, userID int64, statuses []string) (int64, error)
+	CountJoinedByUser(ctx context.Context, userID int64, statuses []string) (int64, error)
+}
+
 type ClientMeta struct {
 	Platform string
 	DeviceNo string
 }
 
+// ProfileUpdate 描述一次资料更新：仅非 nil 字段会被写入，便于做部分更新。
+type ProfileUpdate struct {
+	Nickname *string
+	Gender   *string
+	Region   *string
+	Bio      *string
+	Avatar   *string
+}
+
+// ProfileUpdateInput 是资料更新接口的请求体，APP 改自己与后台改指定用户共用同一组可改字段。
+type ProfileUpdateInput struct {
+	Nickname *string `json:"nickname"`
+	Gender   *string `json:"gender"`
+	Region   *string `json:"region"`
+	Bio      *string `json:"bio"`
+	Avatar   *string `json:"avatar"`
+}
+
+func (i ProfileUpdateInput) ToProfileUpdate() ProfileUpdate {
+	return ProfileUpdate(i)
+}
+
 func NewAuthService(opts AuthServiceOptions) *AuthService {
 	return &AuthService{
 		users:          opts.Users,
+		stats:          opts.Stats,
 		loginCodes:     opts.LoginCodes,
-		refreshTokens:  opts.RefreshTokens,
 		passwordHasher: opts.PasswordHasher,
 		tokenManager:   opts.TokenManager,
 		mobileVerifier: opts.MobileVerifier,
@@ -89,33 +121,40 @@ func NewAuthService(opts AuthServiceOptions) *AuthService {
 }
 
 func (s *AuthService) AliyunMobileLogin(ctx context.Context, accessToken string, meta ClientMeta) (LoginResult, error) {
-	phone, err := s.mobileVerifier.Verify(ctx, accessToken)
+	return s.mobileTokenLogin(ctx, accessToken, RegisterSourceAliyunMobile, "", meta)
+}
+
+func (s *AuthService) JiguangMobileLogin(ctx context.Context, loginToken string, operator string, meta ClientMeta) (LoginResult, error) {
+	return s.mobileTokenLogin(ctx, loginToken, RegisterSourceJiguangMobile, operator, meta)
+}
+
+func (s *AuthService) mobileTokenLogin(ctx context.Context, token string, source string, operator string, meta ClientMeta) (LoginResult, error) {
+	verifyResult, err := s.mobileVerifier.Verify(ctx, token)
 	if err != nil {
 		return LoginResult{}, err
 	}
+	phone := verifyResult.Phone
 	if !isValidPhone(phone) {
 		return LoginResult{}, ErrInvalidPhone
 	}
-	return s.loginOrCreateByPhone(ctx, phone, RegisterSourceAliyunMobile, meta)
+	if verifyResult.Operator != "" {
+		operator = verifyResult.Operator
+	}
+	result, err := s.loginOrCreateByPhone(ctx, phone, source, meta)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	result.MaskedPhone = maskPhone(phone)
+	result.Operator = normalizeOperator(operator)
+	return result, nil
 }
 
-func (s *AuthService) SendLoginCode(ctx context.Context, phone string) error {
+func (s *AuthService) SendLoginCode(ctx context.Context, phone string, scene provider.SMSScene) error {
 	phone = normalizePhone(phone)
 	if !isValidPhone(phone) {
 		return ErrInvalidPhone
 	}
-
-	code := randomCode()
-	item := &LoginCode{
-		Phone:     phone,
-		Scene:     LoginCodeSceneLogin,
-		CodeHash:  s.hashCode(phone, code),
-		ExpiresAt: time.Now().Add(5 * time.Minute),
-	}
-	if err := s.loginCodes.Create(ctx, item); err != nil {
-		return err
-	}
-	return s.smsSender.SendCode(ctx, phone, code)
+	return s.smsSender.SendCode(ctx, phone, normalizeSMSScene(scene))
 }
 
 func (s *AuthService) MobileCodeLogin(ctx context.Context, phone string, code string, meta ClientMeta) (LoginResult, error) {
@@ -128,17 +167,33 @@ func (s *AuthService) MobileCodeLogin(ctx context.Context, phone string, code st
 		return LoginResult{}, ErrInvalidCode
 	}
 
-	item, err := s.loginCodes.FindValid(ctx, phone, LoginCodeSceneLogin, s.hashCode(phone, code), time.Now())
+	passed, err := s.smsSender.CheckCode(ctx, phone, provider.SMSSceneLogin, code)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return LoginResult{}, ErrInvalidCode
-		}
 		return LoginResult{}, err
 	}
-	if err := s.loginCodes.MarkUsed(ctx, item.ID, time.Now()); err != nil {
-		return LoginResult{}, err
+	if !passed {
+		return LoginResult{}, ErrInvalidCode
 	}
 	return s.loginOrCreateByPhone(ctx, phone, RegisterSourceMobileCode, meta)
+}
+
+func (s *AuthService) CheckSMSCode(ctx context.Context, phone string, scene provider.SMSScene, code string) error {
+	phone = normalizePhone(phone)
+	code = strings.TrimSpace(code)
+	if !isValidPhone(phone) {
+		return ErrInvalidPhone
+	}
+	if code == "" {
+		return ErrInvalidCode
+	}
+	passed, err := s.smsSender.CheckCode(ctx, phone, normalizeSMSScene(scene), code)
+	if err != nil {
+		return err
+	}
+	if !passed {
+		return ErrInvalidCode
+	}
+	return nil
 }
 
 func (s *AuthService) RegisterByPassword(ctx context.Context, phone string, username string, password string, meta ClientMeta) (LoginResult, error) {
@@ -208,13 +263,23 @@ func (s *AuthService) PasswordLogin(ctx context.Context, account string, passwor
 	return s.issueLoginResult(ctx, item, meta)
 }
 
-func (s *AuthService) SetPassword(ctx context.Context, userID int64, username string, password string) (PublicUser, error) {
+func (s *AuthService) SetPassword(ctx context.Context, userID int64, username string, oldPassword string, password string) (PublicUser, error) {
 	username = strings.TrimSpace(username)
+	oldPassword = strings.TrimSpace(oldPassword)
 	if len(password) < 8 {
 		return PublicUser{}, ErrInvalidPassword
 	}
 	if isReservedUsername(username) {
 		return PublicUser{}, ErrReservedUsername
+	}
+	item, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return PublicUser{}, err
+	}
+	if item.PasswordHash != "" {
+		if oldPassword == "" || !s.passwordHasher.Compare(item.PasswordHash, oldPassword) {
+			return PublicUser{}, ErrInvalidOldPass
+		}
 	}
 	hash, err := s.passwordHasher.Hash(password)
 	if err != nil {
@@ -223,43 +288,46 @@ func (s *AuthService) SetPassword(ctx context.Context, userID int64, username st
 	if err := s.users.UpdatePassword(ctx, userID, username, hash); err != nil {
 		return PublicUser{}, err
 	}
-	item, err := s.users.FindByID(ctx, userID)
+	item, err = s.users.FindByID(ctx, userID)
 	if err != nil {
 		return PublicUser{}, err
 	}
 	return ToPublicUser(item), nil
 }
 
-func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (auth.TokenPair, error) {
-	claims, err := s.tokenManager.Parse(refreshToken, auth.TokenTypeRefresh)
+func (s *AuthService) ChangePhone(ctx context.Context, userID int64, newPhone string, code string) (PublicUser, error) {
+	newPhone = normalizePhone(newPhone)
+	code = strings.TrimSpace(code)
+	if !isValidPhone(newPhone) {
+		return PublicUser{}, ErrInvalidPhone
+	}
+	if code == "" {
+		return PublicUser{}, ErrInvalidCode
+	}
+	current, err := s.users.FindByID(ctx, userID)
 	if err != nil {
-		return auth.TokenPair{}, err
+		return PublicUser{}, err
 	}
-
-	tokenHash := s.tokenManager.RefreshTokenHash(claims.TokenID)
-	item, err := s.refreshTokens.FindValid(ctx, tokenHash, time.Now())
+	if current.Phone == newPhone {
+		return ToPublicUser(current), nil
+	}
+	if _, err := s.users.FindByPhone(ctx, newPhone); err == nil {
+		return PublicUser{}, ErrPhoneExists
+	} else if !errors.Is(err, ErrNotFound) {
+		return PublicUser{}, err
+	}
+	passed, err := s.smsSender.CheckCode(ctx, newPhone, provider.SMSSceneBindNewPhone, code)
 	if err != nil {
-		return auth.TokenPair{}, err
+		return PublicUser{}, err
 	}
-	if item.UserID != claims.UserID {
-		return auth.TokenPair{}, auth.ErrInvalidToken
+	if !passed {
+		return PublicUser{}, ErrInvalidCode
 	}
-
-	if err := s.refreshTokens.Revoke(ctx, tokenHash, time.Now()); err != nil {
-		return auth.TokenPair{}, err
+	if err := s.users.UpdatePhone(ctx, userID, newPhone); err != nil {
+		return PublicUser{}, err
 	}
-	tokens, refreshID, expiresAt, err := s.tokenManager.NewTokenPair(claims.UserID)
-	if err != nil {
-		return auth.TokenPair{}, err
-	}
-	if err := s.refreshTokens.Create(ctx, &RefreshToken{
-		UserID:    claims.UserID,
-		TokenHash: s.tokenManager.RefreshTokenHash(refreshID),
-		ExpiresAt: expiresAt,
-	}); err != nil {
-		return auth.TokenPair{}, err
-	}
-	return tokens, nil
+	current.Phone = newPhone
+	return ToPublicUser(current), nil
 }
 
 func (s *AuthService) Profile(ctx context.Context, userID int64) (PublicUser, error) {
@@ -267,7 +335,73 @@ func (s *AuthService) Profile(ctx context.Context, userID int64) (PublicUser, er
 	if err != nil {
 		return PublicUser{}, err
 	}
-	return ToPublicUser(item), nil
+	stats, err := s.userStats(ctx, userID, false)
+	if err != nil {
+		return PublicUser{}, err
+	}
+	return ToPublicUserWithStats(item, stats), nil
+}
+
+// PublicProfile 返回他人可见的用户资料安全子集（用于用户主页展示）。
+func (s *AuthService) PublicProfile(ctx context.Context, userID int64) (UserPublicProfile, error) {
+	item, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return UserPublicProfile{}, err
+	}
+	stats, err := s.userStats(ctx, userID, true)
+	if err != nil {
+		return UserPublicProfile{}, err
+	}
+	return ToUserPublicProfileWithStats(item, stats), nil
+}
+
+func (s *AuthService) userStats(ctx context.Context, userID int64, publicOnly bool) (UserStats, error) {
+	if s.stats == nil {
+		return UserStats{}, nil
+	}
+
+	var publishedStatuses []string
+	joinedStatuses := []string{"joined", "approved", "rejected"}
+	if publicOnly {
+		publishedStatuses = []string{"ongoing"}
+		joinedStatuses = []string{"approved"}
+	}
+
+	publishedCount, err := s.stats.CountPublishedByUser(ctx, userID, publishedStatuses)
+	if err != nil {
+		return UserStats{}, err
+	}
+	joinedCount, err := s.stats.CountJoinedByUser(ctx, userID, joinedStatuses)
+	if err != nil {
+		return UserStats{}, err
+	}
+
+	return UserStats{
+		PublishedCount: int(publishedCount),
+		JoinedCount:    int(joinedCount),
+		// 当前没有点赞表或获赞字段，先随用户信息返回 0，后续接点赞体系时只需替换这里的来源。
+		LikedCount: 0,
+	}, nil
+}
+
+// UpdateProfile 更新指定用户的资料字段（昵称/性别/地区/简介），APP 端改自己、后台改指定用户共用。
+func (s *AuthService) UpdateProfile(ctx context.Context, userID int64, update ProfileUpdate) (PublicUser, error) {
+	normalized, err := normalizeProfileUpdate(update)
+	if err != nil {
+		return PublicUser{}, err
+	}
+	if err := s.users.UpdateProfile(ctx, userID, normalized); err != nil {
+		return PublicUser{}, err
+	}
+	item, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return PublicUser{}, err
+	}
+	stats, err := s.userStats(ctx, userID, false)
+	if err != nil {
+		return PublicUser{}, err
+	}
+	return ToPublicUserWithStats(item, stats), nil
 }
 
 func (s *AuthService) ListUsers(ctx context.Context, query UserListQuery) (UserListResult, error) {
@@ -337,15 +471,8 @@ func (s *AuthService) issueLoginResult(ctx context.Context, item User, meta Clie
 		item.DeviceNo = normalizeMetaValue(meta.DeviceNo)
 	}
 
-	tokens, refreshID, expiresAt, err := s.tokenManager.NewTokenPair(item.ID)
+	tokens, err := s.tokenManager.NewToken(item.ID)
 	if err != nil {
-		return LoginResult{}, err
-	}
-	if err := s.refreshTokens.Create(ctx, &RefreshToken{
-		UserID:    item.ID,
-		TokenHash: s.tokenManager.RefreshTokenHash(refreshID),
-		ExpiresAt: expiresAt,
-	}); err != nil {
 		return LoginResult{}, err
 	}
 
@@ -366,6 +493,97 @@ func normalizePhone(phone string) string {
 
 func normalizeMetaValue(value string) string {
 	return strings.TrimSpace(value)
+}
+
+func maskPhone(phone string) string {
+	phone = strings.TrimSpace(phone)
+	if len(phone) < 7 {
+		return phone
+	}
+	return phone[:3] + "****" + phone[len(phone)-4:]
+}
+
+func normalizeOperator(operator string) string {
+	operator = strings.ToUpper(strings.TrimSpace(operator))
+	switch operator {
+	case "CM", "CU", "CT", "CMHK":
+		return operator
+	default:
+		return ""
+	}
+}
+
+func normalizeSMSScene(scene provider.SMSScene) provider.SMSScene {
+	switch scene {
+	case provider.SMSSceneChangePhone,
+		provider.SMSSceneResetPassword,
+		provider.SMSSceneBindNewPhone,
+		provider.SMSSceneVerifyBindPhone:
+		return scene
+	default:
+		return provider.SMSSceneLogin
+	}
+}
+
+// normalizeProfileUpdate 对传入的资料字段去空白并做长度校验，长度上限与数据表列宽一致。
+func normalizeProfileUpdate(update ProfileUpdate) (ProfileUpdate, error) {
+	if update.Nickname != nil {
+		nickname := strings.TrimSpace(*update.Nickname)
+		if nickname == "" || utf8.RuneCountInString(nickname) > 32 {
+			return ProfileUpdate{}, ErrInvalidProfile
+		}
+		update.Nickname = &nickname
+	}
+	if update.Gender != nil {
+		gender := strings.TrimSpace(*update.Gender)
+		if utf8.RuneCountInString(gender) > 16 {
+			return ProfileUpdate{}, ErrInvalidProfile
+		}
+		update.Gender = &gender
+	}
+	if update.Region != nil {
+		region := strings.TrimSpace(*update.Region)
+		if utf8.RuneCountInString(region) > 64 {
+			return ProfileUpdate{}, ErrInvalidProfile
+		}
+		update.Region = &region
+	}
+	if update.Bio != nil {
+		bio := strings.TrimSpace(*update.Bio)
+		if utf8.RuneCountInString(bio) > 200 {
+			return ProfileUpdate{}, ErrInvalidProfile
+		}
+		update.Bio = &bio
+	}
+	if update.Avatar != nil {
+		avatar := strings.TrimSpace(*update.Avatar)
+		if utf8.RuneCountInString(avatar) > 255 {
+			return ProfileUpdate{}, ErrInvalidProfile
+		}
+		update.Avatar = &avatar
+	}
+	return update, nil
+}
+
+// profileUpdateColumns 把资料更新转成仅含非 nil 字段的列映射，供 GORM 部分更新使用。
+func profileUpdateColumns(update ProfileUpdate) map[string]interface{} {
+	columns := map[string]interface{}{}
+	if update.Nickname != nil {
+		columns["nickname"] = *update.Nickname
+	}
+	if update.Gender != nil {
+		columns["gender"] = *update.Gender
+	}
+	if update.Region != nil {
+		columns["region"] = *update.Region
+	}
+	if update.Bio != nil {
+		columns["bio"] = *update.Bio
+	}
+	if update.Avatar != nil {
+		columns["avatar"] = *update.Avatar
+	}
+	return columns
 }
 
 func isReservedUsername(username string) bool {

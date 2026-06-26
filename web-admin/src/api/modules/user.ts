@@ -1,4 +1,4 @@
-import { get } from '@/utils/request'
+import { get, put } from '@/utils/request'
 
 export interface UserListParams {
   page: number
@@ -36,4 +36,22 @@ export function getUserList(params: UserListParams) {
   return get<UserListResult>('admin/users', {
     params,
   })
+}
+
+// 获取指定 APP 用户详情，编辑前调用。
+export function getUserDetail(id: number) {
+  return get<UserItem>(`admin/users/${id}`)
+}
+
+// 后台可修改的用户资料字段，与 APP 端「修改资料」保持一致。
+export interface UpdateUserPayload {
+  nickname?: string
+  gender?: string
+  avatar?: string
+  bio?: string
+}
+
+// 修改指定 APP 用户的资料，返回更新后的完整用户信息。
+export function updateUser(id: number, data: UpdateUserPayload) {
+  return put<UserItem>(`admin/users/${id}`, data)
 }

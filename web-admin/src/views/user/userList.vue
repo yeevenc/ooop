@@ -2,6 +2,7 @@
 import { Search } from '@element-plus/icons-vue'
 import { onMounted, reactive, ref } from 'vue'
 import { getUserList, type UserItem } from '@/api/modules/user'
+import UserEditForm from '@/components/user/userEditForm.vue'
 
 defineOptions({ name: 'userList' })
 
@@ -42,13 +43,6 @@ function getGenderText(gender: string) {
   return genderMap[gender] ?? (gender || '-')
 }
 
-function formatTime(value: string | null) {
-  if (!value) {
-    return '-'
-  }
-  return new Date(value).toLocaleString()
-}
-
 async function getList() {
   loading.value = true
   try {
@@ -81,6 +75,14 @@ function handleCurrentChange(page: number) {
   getList()
 }
 
+const editVisible = ref(false)
+const editUserId = ref<number | null>(null)
+
+function handleEdit(row: UserItem) {
+  editUserId.value = row.id
+  editVisible.value = true
+}
+
 onMounted(() => {
   getList()
 })
@@ -94,7 +96,7 @@ onMounted(() => {
           <el-input
             v-model="queryForm.keyword"
             clearable
-            placeholder="手机号 / 用户名"
+            placeholder="手机号 / 用户名 / 昵称"
             @clear="handleSearch"
             @keyup.enter="handleSearch"
           />
@@ -120,14 +122,13 @@ onMounted(() => {
       </el-form>
     </el-card>
 
-    <el-card>
+    <el-card  class="m-t-10">
       <el-table
         v-loading="loading"
-        style="height: calc(100vh - 350px);"
+        style="height: calc(100vh - 320px);"
         stripe
         border
         :data="tableData"
-        class="m-t-10"
       >
         <el-table-column prop="id" label="ID" width="90" fixed="left" />
         <el-table-column prop="phone" label="手机号" min-width="140" />
@@ -143,7 +144,14 @@ onMounted(() => {
         </el-table-column>
         <el-table-column prop="avatar" label="头像" min-width="90">
           <template #default="{ row }">
-            <el-avatar v-if="row.avatar" :src="row.avatar" :size="32" />
+            <el-image
+              v-if="row.avatar"
+              :src="row.avatar"
+              fit="cover"
+              :preview-src-list="[row.avatar]"
+              preview-teleported
+              style="width: 36px; height: 36px; border-radius: 50%; cursor: pointer"
+            />
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -183,13 +191,12 @@ onMounted(() => {
           </template>
         </el-table-column>
         <el-table-column prop="last_login_at" label="最近登录" min-width="180">
-          <template #default="{ row }">
-            {{ formatTime(row.last_login_at) }}
-          </template>
         </el-table-column>
         <el-table-column prop="created_at" label="注册时间" min-width="180">
+        </el-table-column>
+        <el-table-column label="操作" width="90" fixed="right">
           <template #default="{ row }">
-            {{ formatTime(row.created_at) }}
+            <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -206,5 +213,7 @@ onMounted(() => {
         @current-change="handleCurrentChange"
       />
     </el-card>
+
+    <UserEditForm v-model:visible="editVisible" :user-id="editUserId" @success="getList" />
   </div>
 </template>

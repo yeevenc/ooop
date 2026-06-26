@@ -53,9 +53,7 @@ http://127.0.0.1:8080/api/v1
     },
     "tokens": {
       "access_token": "登录访问令牌",
-      "refresh_token": "刷新令牌",
-      "access_token_expires_in": 7200,
-      "refresh_token_expires_in": 2592000
+      "access_token_expires_in": 2592000
     }
   }
 }
@@ -66,6 +64,8 @@ APP 端后续请求需要携带：
 ```http
 Authorization: Bearer <access_token>
 ```
+
+访问令牌有效期为一个月（2592000 秒）。系统不提供刷新令牌：令牌过期后接口返回 401，APP 端应清除本地登录态并引导用户重新登录。
 
 ## 1. 阿里云手机号一键登录
 
@@ -213,37 +213,7 @@ Content-Type: application/json
 }
 ```
 
-## 7. 刷新令牌
-
-```http
-POST /auth/refresh-token
-Content-Type: application/json
-```
-
-请求参数：
-
-```json
-{
-  "refresh_token": "<refresh_token>"
-}
-```
-
-返回：
-
-```json
-{
-  "code": 0,
-  "message": "success",
-  "data": {
-    "access_token": "新的访问令牌",
-    "refresh_token": "新的刷新令牌",
-    "access_token_expires_in": 7200,
-    "refresh_token_expires_in": 2592000
-  }
-}
-```
-
-## 8. 获取当前用户信息
+## 7. 获取当前用户信息
 
 ```http
 GET /user/profile
@@ -264,6 +234,69 @@ Authorization: Bearer <access_token>
     "register_source": "aliyun_mobile",
     "last_login_at": "2026-06-17T14:00:00+08:00",
     "created_at": "2026-06-17T14:00:00+08:00"
+  }
+}
+```
+
+## 8. 修改当前用户资料
+
+仅支持修改昵称、性别、地区、个性签名、头像；只提交需要修改的字段，未提交的字段保持不变。头像需先调用「上传图片」接口拿到 URL，再把 URL 提交到 `avatar`。
+
+```http
+PUT /user/profile
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+请求参数（均为选填）：
+
+```json
+{
+  "nickname": "新昵称",
+  "gender": "男",
+  "region": "上海",
+  "bio": "热爱生活",
+  "avatar": "http://你的服务域名/uploads/images/1718000000000000000.jpg"
+}
+```
+
+字段说明：
+
+```text
+nickname：提交时不可为空，最长 32 字
+gender：最长 16 字
+region：最长 64 字
+bio：最长 200 字
+avatar：图片 URL，最长 255 字符；由「上传图片」接口返回
+```
+
+返回更新后的完整用户信息，结构同「获取当前用户信息」。
+
+## 9. 上传图片
+
+用于头像等图片上传，返回可公开访问的 URL；登录后调用。
+
+```http
+POST /upload/image
+Authorization: Bearer <access_token>
+Content-Type: multipart/form-data
+```
+
+表单字段：
+
+```text
+file：图片文件，字段名固定为 file；支持 jpg/jpeg/png/webp，最大 5MB
+```
+
+返回：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "url": "http://你的服务域名/uploads/images/1718000000000000000.jpg",
+    "path": "/uploads/images/1718000000000000000.jpg"
   }
 }
 ```
@@ -293,16 +326,5 @@ scene：验证码场景，当前为 login
 code_hash：验证码哈希，明文验证码不落库
 used_at：使用时间
 expires_at：过期时间
-created_at：创建时间
-```
-
-### refresh_tokens
-
-```text
-id：令牌 ID
-user_id：用户 ID
-token_hash：刷新令牌哈希
-expires_at：过期时间
-revoked_at：失效时间
 created_at：创建时间
 ```

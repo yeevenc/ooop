@@ -82,7 +82,7 @@ func (s *Service) Login(ctx context.Context, username string, password string) (
 		return LoginResult{}, ErrInvalidAccount
 	}
 
-	tokens, _, _, err := s.tokenManager.NewTokenPair(item.ID)
+	tokens, err := s.tokenManager.NewToken(item.ID)
 	if err != nil {
 		return LoginResult{}, err
 	}

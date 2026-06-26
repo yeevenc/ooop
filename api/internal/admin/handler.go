@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"ooop-admin-api/internal/activity"
 	"ooop-admin-api/internal/auth"
 	"ooop-admin-api/internal/httpx"
 	"ooop-admin-api/internal/user"
@@ -15,13 +16,15 @@ import (
 type Handler struct {
 	service      *Service
 	appUsers     *user.AuthService
+	activities   *activity.Service
 	tokenManager *auth.TokenManager
 }
 
-func NewHandler(service *Service, appUsers *user.AuthService, tokenManager *auth.TokenManager) *Handler {
+func NewHandler(service *Service, appUsers *user.AuthService, activities *activity.Service, tokenManager *auth.TokenManager) *Handler {
 	return &Handler{
 		service:      service,
 		appUsers:     appUsers,
+		activities:   activities,
 		tokenManager: tokenManager,
 	}
 }
@@ -33,6 +36,22 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	protected := adminGroup.Group("")
 	protected.Use(Middleware(h.tokenManager))
 	protected.GET("/users", h.userList)
+	protected.GET("/users/:id", h.userDetail)
+	protected.PUT("/users/:id", h.updateUser)
+
+	// 活动分类管理
+	protected.GET("/activity-categories", h.categoryList)
+	protected.POST("/activity-categories", h.categoryCreate)
+	protected.PUT("/activity-categories/:id", h.categoryUpdate)
+	protected.DELETE("/activity-categories/:id", h.categoryDelete)
+
+	// 活动管理（审核/编辑/上下架/删除）
+	protected.GET("/activities", h.activityList)
+	protected.GET("/activities/:id", h.activityDetail)
+	protected.PUT("/activities/:id", h.activityUpdate)
+	protected.DELETE("/activities/:id", h.activityDelete)
+	protected.PUT("/activities/:id/review", h.activityReview)
+	protected.PUT("/activities/:id/status", h.activityStatus)
 }
 
 func (h *Handler) login(c *gin.Context) {
@@ -64,6 +83,33 @@ func (h *Handler) userList(c *gin.Context) {
 	}
 
 	result, err := h.appUsers.ListUsers(c.Request.Context(), query)
+	writeResult(c, result, err)
+}
+
+func (h *Handler) updateUser(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		httpx.Fail(c, http.StatusBadRequest, 400001, "用户 ID 格式不正确")
+		return
+	}
+
+	var req user.ProfileUpdateInput
+	if !bindJSON(c, &req) {
+		return
+	}
+
+	result, err := h.appUsers.UpdateProfile(c.Request.Context(), id, req.ToProfileUpdate())
+	writeResult(c, result, err)
+}
+
+func (h *Handler) userDetail(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		httpx.Fail(c, http.StatusBadRequest, 400001, "用户 ID 格式不正确")
+		return
+	}
+
+	result, err := h.appUsers.Profile(c.Request.Context(), id)
 	writeResult(c, result, err)
 }
 
@@ -99,6 +145,22 @@ func writeResult(c *gin.Context, data interface{}, err error) {
 		httpx.Fail(c, http.StatusUnauthorized, 401003, err.Error())
 	case errors.Is(err, ErrDisabledAdmin):
 		httpx.Fail(c, http.StatusForbidden, 403001, err.Error())
+	case errors.Is(err, user.ErrInvalidProfile):
+		httpx.Fail(c, http.StatusBadRequest, 400002, err.Error())
+	case errors.Is(err, user.ErrNotFound):
+		httpx.Fail(c, http.StatusNotFound, 404001, "用户不存在")
+	case errors.Is(err, activity.ErrNotFound),
+		errors.Is(err, activity.ErrCategoryMissing):
+		httpx.Fail(c, http.StatusNotFound, 404001, err.Error())
+	case errors.Is(err, activity.ErrInvalidTitle),
+		errors.Is(err, activity.ErrInvalidCategory),
+		errors.Is(err, activity.ErrInvalidLocation),
+		errors.Is(err, activity.ErrInvalidCity),
+		errors.Is(err, activity.ErrInvalidIntro),
+		errors.Is(err, activity.ErrInvalidCount),
+		errors.Is(err, activity.ErrInvalidStatus),
+		errors.Is(err, activity.ErrCategoryExists):
+		httpx.Fail(c, http.StatusBadRequest, 400004, err.Error())
 	case errors.Is(err, auth.ErrInvalidToken),
 		errors.Is(err, auth.ErrExpiredToken):
 		httpx.Fail(c, http.StatusUnauthorized, 401002, err.Error())

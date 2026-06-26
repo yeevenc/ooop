@@ -18,5 +18,9 @@ func main() {
 		logger.Fatalf("数据表迁移失败: %v", err)
 	}
 
+	if err := database.SeedDefaultActivityCategories(db); err != nil {
+		logger.Fatalf("活动分类初始化失败: %v", err)
+	}
+
 	logger.Infof("数据表迁移完成")
 }

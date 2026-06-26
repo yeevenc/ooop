@@ -12,11 +12,14 @@ var ErrNotFound = errors.New("数据不存在")
 
 type UserRepository interface {
 	FindByID(ctx context.Context, id int64) (User, error)
+	FindByIDs(ctx context.Context, ids []int64) ([]User, error)
 	FindByPhone(ctx context.Context, phone string) (User, error)
 	FindByUsernameOrPhone(ctx context.Context, account string) (User, error)
 	List(ctx context.Context, query UserListQuery) ([]User, int64, error)
 	Create(ctx context.Context, item *User) error
 	UpdatePassword(ctx context.Context, id int64, username string, passwordHash string) error
+	UpdatePhone(ctx context.Context, id int64, phone string) error
+	UpdateProfile(ctx context.Context, id int64, update ProfileUpdate) error
 	TouchLastLogin(ctx context.Context, id int64, loginAt time.Time, meta ClientMeta) error
 }
 
@@ -24,12 +27,6 @@ type LoginCodeRepository interface {
 	Create(ctx context.Context, item *LoginCode) error
 	FindValid(ctx context.Context, phone string, scene string, codeHash string, now time.Time) (LoginCode, error)
 	MarkUsed(ctx context.Context, id int64, usedAt time.Time) error
-}
-
-type RefreshTokenRepository interface {
-	Create(ctx context.Context, item *RefreshToken) error
-	FindValid(ctx context.Context, tokenHash string, now time.Time) (RefreshToken, error)
-	Revoke(ctx context.Context, tokenHash string, revokedAt time.Time) error
 }
 
 type GormUserRepository struct {
@@ -44,6 +41,16 @@ func (r *GormUserRepository) FindByID(ctx context.Context, id int64) (User, erro
 	var item User
 	err := r.db.WithContext(ctx).First(&item, id).Error
 	return item, normalizeNotFound(err)
+}
+
+// FindByIDs 批量按 id 取用户（用于参加者/申请人列表，避免逐个查询的 N+1）。
+func (r *GormUserRepository) FindByIDs(ctx context.Context, ids []int64) ([]User, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var items []User
+	err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&items).Error
+	return items, err
 }
 
 func (r *GormUserRepository) FindByPhone(ctx context.Context, phone string) (User, error) {
@@ -99,6 +106,19 @@ func (r *GormUserRepository) UpdatePassword(ctx context.Context, id int64, usern
 	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(updates).Error
 }
 
+func (r *GormUserRepository) UpdatePhone(ctx context.Context, id int64, phone string) error {
+	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Update("phone", phone).Error
+}
+
+// UpdateProfile 仅更新调用方显式传入(非 nil)的资料字段，未传入的字段保持不变。
+func (r *GormUserRepository) UpdateProfile(ctx context.Context, id int64, update ProfileUpdate) error {
+	updates := profileUpdateColumns(update)
+	if len(updates) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(updates).Error
+}
+
 func (r *GormUserRepository) TouchLastLogin(ctx context.Context, id int64, loginAt time.Time, meta ClientMeta) error {
 	updates := map[string]interface{}{
 		"last_login_at": loginAt,
@@ -135,30 +155,6 @@ func (r *GormLoginCodeRepository) FindValid(ctx context.Context, phone string, s
 
 func (r *GormLoginCodeRepository) MarkUsed(ctx context.Context, id int64, usedAt time.Time) error {
 	return r.db.WithContext(ctx).Model(&LoginCode{}).Where("id = ?", id).Update("used_at", usedAt).Error
-}
-
-type GormRefreshTokenRepository struct {
-	db *gorm.DB
-}
-
-func NewGormRefreshTokenRepository(db *gorm.DB) *GormRefreshTokenRepository {
-	return &GormRefreshTokenRepository{db: db}
-}
-
-func (r *GormRefreshTokenRepository) Create(ctx context.Context, item *RefreshToken) error {
-	return r.db.WithContext(ctx).Create(item).Error
-}
-
-func (r *GormRefreshTokenRepository) FindValid(ctx context.Context, tokenHash string, now time.Time) (RefreshToken, error) {
-	var item RefreshToken
-	err := r.db.WithContext(ctx).
-		Where("token_hash = ? AND revoked_at IS NULL AND expires_at > ?", tokenHash, now).
-		First(&item).Error
-	return item, normalizeNotFound(err)
-}
-
-func (r *GormRefreshTokenRepository) Revoke(ctx context.Context, tokenHash string, revokedAt time.Time) error {
-	return r.db.WithContext(ctx).Model(&RefreshToken{}).Where("token_hash = ?", tokenHash).Update("revoked_at", revokedAt).Error
 }
 
 func normalizeNotFound(err error) error {

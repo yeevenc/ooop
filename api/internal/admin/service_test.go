@@ -37,11 +37,9 @@ func TestEnsureDefaultAdminCreatesAdminAndLogin(t *testing.T) {
 
 func newTestService() *Service {
 	tokenManager := auth.NewTokenManager(config.JWTConfig{
-		Secret:             "test-secret",
-		AccessTokenTTL:     time.Hour,
-		RefreshTokenTTL:    24 * time.Hour,
-		RefreshTokenPepper: "test-pepper",
-		Issuer:             "test-admin",
+		Secret:         "test-secret",
+		AccessTokenTTL: time.Hour,
+		Issuer:         "test-admin",
 	})
 
 	return NewService(newMemoryRepository(), auth.NewBcryptHasher(), tokenManager)

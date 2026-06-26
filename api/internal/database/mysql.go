@@ -1,13 +1,17 @@
 package database
 
 import (
+	"context"
 	"time"
 
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 
+	"ooop-admin-api/internal/activity"
 	"ooop-admin-api/internal/admin"
 	"ooop-admin-api/internal/config"
+	"ooop-admin-api/internal/feedback"
+	"ooop-admin-api/internal/message"
 	"ooop-admin-api/internal/user"
 )
 
@@ -34,11 +38,20 @@ func AutoMigrate(db *gorm.DB) error {
 		&admin.AdminUser{},
 		&user.User{},
 		&user.LoginCode{},
-		&user.RefreshToken{},
+		&activity.ActivityCategory{},
+		&activity.Activity{},
+		&activity.ActivityParticipant{},
+		&message.UserMessage{},
+		&feedback.Feedback{},
 	); err != nil {
 		return err
 	}
 
 	// APP 用户 ID 从 3000 起步，只影响后续新增用户，不修改历史数据。
 	return db.Exec("ALTER TABLE users AUTO_INCREMENT = 3000").Error
+}
+
+func SeedDefaultActivityCategories(db *gorm.DB) error {
+	repo := activity.NewGormRepository(db)
+	return activity.EnsureDefaultCategories(context.Background(), repo)
 }

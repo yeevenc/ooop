@@ -9,7 +9,12 @@ import (
 )
 
 type MobileVerifier interface {
-	Verify(ctx context.Context, accessToken string) (string, error)
+	Verify(ctx context.Context, accessToken string) (MobileVerifyResult, error)
+}
+
+type MobileVerifyResult struct {
+	Phone    string
+	Operator string
 }
 
 type AliyunMobileVerifier struct {
@@ -21,10 +26,10 @@ func NewAliyunMobileVerifier(client *AliyunRPCClient, cfg config.AliyunMobileCon
 	return &AliyunMobileVerifier{client: client, cfg: cfg}
 }
 
-func (v *AliyunMobileVerifier) Verify(ctx context.Context, accessToken string) (string, error) {
+func (v *AliyunMobileVerifier) Verify(ctx context.Context, accessToken string) (MobileVerifyResult, error) {
 	accessToken = strings.TrimSpace(accessToken)
 	if accessToken == "" {
-		return "", errors.New("一键登录凭证不能为空")
+		return MobileVerifyResult{}, errors.New("一键登录凭证不能为空")
 	}
 
 	result, err := v.client.Call(ctx, v.cfg.Endpoint, map[string]string{
@@ -33,14 +38,14 @@ func (v *AliyunMobileVerifier) Verify(ctx context.Context, accessToken string) (
 		"AccessToken": accessToken,
 	})
 	if err != nil {
-		return "", err
+		return MobileVerifyResult{}, err
 	}
 
 	phone := findString(result, "Mobile")
 	if phone == "" {
-		return "", errors.New("阿里云未返回手机号")
+		return MobileVerifyResult{}, errors.New("阿里云未返回手机号")
 	}
-	return phone, nil
+	return MobileVerifyResult{Phone: phone}, nil
 }
 
 func findString(value interface{}, key string) string {

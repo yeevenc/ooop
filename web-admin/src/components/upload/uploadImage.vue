@@ -141,7 +141,7 @@ const headers = {
   Authorization: `Bearer ${userStore.token || ""}`
 };
 const uploadRef = ref();
-const action = ref(import.meta.env.VITE_AP_BASE_FILE);
+const action = ref(import.meta.env.VITE_AP_BASE_FILE_URL);
 const data = ref({
   is_source: 'mindcare',
 });
@@ -292,7 +292,6 @@ onBeforeUnmount(() => {
   uploadRef.value.clearFiles();
 });
 </script>
-<style scoped lang="scss"></style>
 <style scoped lang="scss">
 .l-upload {
   :deep(.el-upload--picture-card) {

@@ -16,8 +16,7 @@ import (
 )
 
 const (
-	TokenTypeAccess  = "access"
-	TokenTypeRefresh = "refresh"
+	TokenTypeAccess = "access"
 )
 
 var (
@@ -25,11 +24,9 @@ var (
 	ErrExpiredToken = errors.New("登录凭证已过期")
 )
 
-type TokenPair struct {
-	AccessToken           string `json:"access_token"`
-	RefreshToken          string `json:"refresh_token"`
-	AccessTokenExpiresIn  int64  `json:"access_token_expires_in"`
-	RefreshTokenExpiresIn int64  `json:"refresh_token_expires_in"`
+type Token struct {
+	AccessToken          string `json:"access_token"`
+	AccessTokenExpiresIn int64  `json:"access_token_expires_in"`
 }
 
 type Claims struct {
@@ -42,27 +39,21 @@ type Claims struct {
 }
 
 type TokenManager struct {
-	secret          []byte
-	issuer          string
-	accessTokenTTL  time.Duration
-	refreshTokenTTL time.Duration
-	refreshPepper   string
+	secret         []byte
+	issuer         string
+	accessTokenTTL time.Duration
 }
 
 func NewTokenManager(cfg config.JWTConfig) *TokenManager {
 	return &TokenManager{
-		secret:          []byte(cfg.Secret),
-		issuer:          cfg.Issuer,
-		accessTokenTTL:  cfg.AccessTokenTTL,
-		refreshTokenTTL: cfg.RefreshTokenTTL,
-		refreshPepper:   cfg.RefreshTokenPepper,
+		secret:         []byte(cfg.Secret),
+		issuer:         cfg.Issuer,
+		accessTokenTTL: cfg.AccessTokenTTL,
 	}
 }
 
-func (m *TokenManager) NewTokenPair(userID int64) (TokenPair, string, time.Time, error) {
+func (m *TokenManager) NewToken(userID int64) (Token, error) {
 	now := time.Now()
-	refreshID := randomTokenID()
-	refreshExpiresAt := now.Add(m.refreshTokenTTL)
 
 	accessToken, err := m.signJWT(Claims{
 		UserID:    userID,
@@ -73,27 +64,13 @@ func (m *TokenManager) NewTokenPair(userID int64) (TokenPair, string, time.Time,
 		Issuer:    m.issuer,
 	})
 	if err != nil {
-		return TokenPair{}, "", time.Time{}, err
+		return Token{}, err
 	}
 
-	refreshToken, err := m.signJWT(Claims{
-		UserID:    userID,
-		TokenID:   refreshID,
-		TokenType: TokenTypeRefresh,
-		IssuedAt:  now,
-		ExpiresAt: refreshExpiresAt,
-		Issuer:    m.issuer,
-	})
-	if err != nil {
-		return TokenPair{}, "", time.Time{}, err
-	}
-
-	return TokenPair{
-		AccessToken:           accessToken,
-		RefreshToken:          refreshToken,
-		AccessTokenExpiresIn:  int64(m.accessTokenTTL.Seconds()),
-		RefreshTokenExpiresIn: int64(m.refreshTokenTTL.Seconds()),
-	}, refreshID, refreshExpiresAt, nil
+	return Token{
+		AccessToken:          accessToken,
+		AccessTokenExpiresIn: int64(m.accessTokenTTL.Seconds()),
+	}, nil
 }
 
 func (m *TokenManager) Parse(token string, expectedType string) (Claims, error) {
@@ -129,11 +106,6 @@ func (m *TokenManager) Parse(token string, expectedType string) (Claims, error) 
 		return Claims{}, ErrExpiredToken
 	}
 	return claims, nil
-}
-
-func (m *TokenManager) RefreshTokenHash(tokenID string) string {
-	sum := sha256.Sum256([]byte(tokenID + ":" + m.refreshPepper))
-	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 func (m *TokenManager) signJWT(claims Claims) (string, error) {

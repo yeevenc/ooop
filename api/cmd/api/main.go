@@ -6,13 +6,17 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"ooop-admin-api/internal/activity"
 	"ooop-admin-api/internal/admin"
 	"ooop-admin-api/internal/auth"
 	"ooop-admin-api/internal/config"
 	"ooop-admin-api/internal/database"
+	"ooop-admin-api/internal/feedback"
 	"ooop-admin-api/internal/httpx"
 	"ooop-admin-api/internal/logger"
+	"ooop-admin-api/internal/message"
 	"ooop-admin-api/internal/provider"
+	"ooop-admin-api/internal/upload"
 	"ooop-admin-api/internal/user"
 )
 
@@ -43,16 +47,18 @@ func main() {
 	adminRepo := admin.NewGormRepository(db)
 	userRepo := user.NewGormUserRepository(db)
 	codeRepo := user.NewGormLoginCodeRepository(db)
-	refreshTokenRepo := user.NewGormRefreshTokenRepository(db)
+	activityRepo := activity.NewGormRepository(db)
+	messageRepo := message.NewGormRepository(db)
+	feedbackRepo := feedback.NewGormRepository(db)
 
 	aliyunClient := provider.NewAliyunRPCClient(cfg.Aliyun.AccessKeyID, cfg.Aliyun.AccessKeySecret)
-	mobileVerifier := provider.NewAliyunMobileVerifier(aliyunClient, cfg.Aliyun.Mobile)
+	mobileVerifier := provider.NewJiguangMobileVerifier(cfg.Jiguang)
 	smsSender := provider.NewAliyunSMSSender(aliyunClient, cfg.Aliyun.SMS)
 
 	authService := user.NewAuthService(user.AuthServiceOptions{
 		Users:          userRepo,
+		Stats:          activityRepo,
 		LoginCodes:     codeRepo,
-		RefreshTokens:  refreshTokenRepo,
 		PasswordHasher: passwordHasher,
 		TokenManager:   tokenManager,
 		MobileVerifier: mobileVerifier,
@@ -60,11 +66,20 @@ func main() {
 		CodeSecret:     cfg.Auth.CodeSecret,
 	})
 	adminService := admin.NewService(adminRepo, passwordHasher, adminTokenManager)
+	activityService := activity.NewService(activityRepo, userRepo)
+	messageService := message.NewService(messageRepo)
+	feedbackService := feedback.NewService(feedbackRepo, authService)
+	activityService.SetReviewNotifier(messageService)
 	// 后台账号独立写入 admin_users，不再污染 APP 用户表。
 	if _, err := adminService.EnsureDefaultAdmin(context.Background(), "admin", "admin"); err != nil {
 		logger.Warnf("默认管理员初始化跳过: %v", err)
 	} else {
 		logger.Infof("默认管理员账号已就绪: admin")
+	}
+	if err := activityService.EnsureDefaultCategories(context.Background()); err != nil {
+		logger.Warnf("默认活动分类初始化跳过: %v", err)
+	} else {
+		logger.Infof("默认活动分类已就绪")
 	}
 
 	router := gin.New()
@@ -74,10 +89,15 @@ func main() {
 	router.GET("/health", func(c *gin.Context) {
 		httpx.OK(c, gin.H{"status": "ok"})
 	})
+	router.Static("/uploads", "./uploads")
 
 	api := router.Group("/api/v1")
 	user.NewHandler(authService, tokenManager).Register(api)
-	admin.NewHandler(adminService, authService, adminTokenManager).Register(api)
+	activity.NewHandler(activityService, tokenManager).Register(api)
+	message.NewHandler(messageService, tokenManager).Register(api)
+	feedback.NewHandler(feedbackService, tokenManager, adminTokenManager).Register(api)
+	upload.NewHandler(tokenManager).Register(api)
+	admin.NewHandler(adminService, authService, activityService, adminTokenManager).Register(api)
 
 	server := &http.Server{
 		Addr:              cfg.HTTP.Addr(),

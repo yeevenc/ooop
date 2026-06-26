@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { getToken } from '@/utils/auth'
 import { userRoutes } from '@/router/user'
+import { activityRoutes } from '@/router/activity'
+import { feedbackRoutes } from '@/router/feedback'
 declare module 'vue-router' {
   interface RouteMeta {
     title?: string
@@ -21,6 +23,8 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '首页', icon: 'House' },
       },
       ...userRoutes,
+      ...activityRoutes,
+      ...feedbackRoutes,
     ],
   },
   {

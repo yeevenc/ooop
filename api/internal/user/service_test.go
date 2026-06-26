@@ -10,6 +10,7 @@ import (
 
 	"ooop-admin-api/internal/auth"
 	"ooop-admin-api/internal/config"
+	"ooop-admin-api/internal/provider"
 )
 
 func TestAliyunMobileLoginCreatesUserAndReturnsTokens(t *testing.T) {
@@ -26,8 +27,8 @@ func TestAliyunMobileLoginCreatesUserAndReturnsTokens(t *testing.T) {
 	if result.User.RegisterSource != RegisterSourceAliyunMobile {
 		t.Fatalf("register source = %s", result.User.RegisterSource)
 	}
-	if result.Tokens.AccessToken == "" || result.Tokens.RefreshToken == "" {
-		t.Fatalf("token pair should not be empty")
+	if result.Tokens.AccessToken == "" {
+		t.Fatalf("access token should not be empty")
 	}
 	if result.User.Platform != "ios" || result.User.DeviceNo != "device-001" {
 		t.Fatalf("client meta = %s/%s, want ios/device-001", result.User.Platform, result.User.DeviceNo)
@@ -42,7 +43,7 @@ func TestPasswordLoginSupportsUsernameOrPhone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AliyunMobileLogin() error = %v", err)
 	}
-	if _, err := service.SetPassword(ctx, loginResult.User.ID, "test_user", "password123"); err != nil {
+	if _, err := service.SetPassword(ctx, loginResult.User.ID, "test_user", "", "password123"); err != nil {
 		t.Fatalf("SetPassword() error = %v", err)
 	}
 
@@ -60,6 +61,25 @@ func TestPasswordLoginSupportsUsernameOrPhone(t *testing.T) {
 	}
 	if usernameLogin.User.ID != loginResult.User.ID {
 		t.Fatalf("username login user id = %d, want %d", usernameLogin.User.ID, loginResult.User.ID)
+	}
+}
+
+func TestSetPasswordRequiresOldPasswordWhenAlreadySet(t *testing.T) {
+	service := newTestAuthService()
+	ctx := context.Background()
+
+	loginResult, err := service.AliyunMobileLogin(ctx, "aliyun-token", ClientMeta{})
+	if err != nil {
+		t.Fatalf("AliyunMobileLogin() error = %v", err)
+	}
+	if _, err := service.SetPassword(ctx, loginResult.User.ID, "", "", "password123"); err != nil {
+		t.Fatalf("SetPassword() first error = %v", err)
+	}
+	if _, err := service.SetPassword(ctx, loginResult.User.ID, "", "", "password456"); !errors.Is(err, ErrInvalidOldPass) {
+		t.Fatalf("SetPassword() error = %v, want ErrInvalidOldPass", err)
+	}
+	if _, err := service.SetPassword(ctx, loginResult.User.ID, "", "password123", "password456"); err != nil {
+		t.Fatalf("SetPassword() second error = %v", err)
 	}
 }
 
@@ -100,10 +120,10 @@ func TestRegisterByPasswordRejectsReservedUsername(t *testing.T) {
 
 func TestMobileCodeLoginConsumesValidCode(t *testing.T) {
 	service := newTestAuthService()
-	codeRepo := service.loginCodes.(*memoryLoginCodeRepository)
+	smsSender := service.smsSender.(*noopSMSSender)
 	ctx := context.Background()
 
-	codeRepo.seed("13900139000", LoginCodeSceneLogin, service.hashCode("13900139000", "123456"))
+	smsSender.allow("13900139000", provider.SMSSceneLogin, "123456")
 
 	result, err := service.MobileCodeLogin(ctx, "13900139000", "123456", ClientMeta{})
 	if err != nil {
@@ -115,6 +135,45 @@ func TestMobileCodeLoginConsumesValidCode(t *testing.T) {
 
 	if _, err := service.MobileCodeLogin(ctx, "13900139000", "123456", ClientMeta{}); !errors.Is(err, ErrInvalidCode) {
 		t.Fatalf("second MobileCodeLogin() error = %v, want ErrInvalidCode", err)
+	}
+}
+
+func TestUpdateProfilePartiallyUpdatesFields(t *testing.T) {
+	service := newTestAuthService()
+	ctx := context.Background()
+
+	login, err := service.AliyunMobileLogin(ctx, "aliyun-token", ClientMeta{})
+	if err != nil {
+		t.Fatalf("AliyunMobileLogin() error = %v", err)
+	}
+
+	nickname := "  新昵称  "
+	bio := "热爱生活"
+	updated, err := service.UpdateProfile(ctx, login.User.ID, ProfileUpdate{Nickname: &nickname, Bio: &bio})
+	if err != nil {
+		t.Fatalf("UpdateProfile() error = %v", err)
+	}
+	if updated.Nickname != "新昵称" {
+		t.Fatalf("nickname = %q, want 新昵称(已去空白)", updated.Nickname)
+	}
+	if updated.Bio != "热爱生活" {
+		t.Fatalf("bio = %q, want 热爱生活", updated.Bio)
+	}
+
+	// 仅传 region，其余字段保持不变
+	region := "上海"
+	updated, err = service.UpdateProfile(ctx, login.User.ID, ProfileUpdate{Region: &region})
+	if err != nil {
+		t.Fatalf("UpdateProfile(region) error = %v", err)
+	}
+	if updated.Nickname != "新昵称" || updated.Region != "上海" {
+		t.Fatalf("部分更新丢字段: %+v", updated)
+	}
+
+	// 空昵称应被拒绝
+	blank := "   "
+	if _, err := service.UpdateProfile(ctx, login.User.ID, ProfileUpdate{Nickname: &blank}); !errors.Is(err, ErrInvalidProfile) {
+		t.Fatalf("空昵称 error = %v, want ErrInvalidProfile", err)
 	}
 }
 
@@ -157,21 +216,18 @@ func TestListUsersReturnsPagedPublicUsers(t *testing.T) {
 
 func newTestAuthService() *AuthService {
 	tokenManager := auth.NewTokenManager(config.JWTConfig{
-		Secret:             "test-secret",
-		AccessTokenTTL:     time.Hour,
-		RefreshTokenTTL:    24 * time.Hour,
-		RefreshTokenPepper: "test-pepper",
-		Issuer:             "test",
+		Secret:         "test-secret",
+		AccessTokenTTL: time.Hour,
+		Issuer:         "test",
 	})
 
 	return NewAuthService(AuthServiceOptions{
 		Users:          newMemoryUserRepository(),
 		LoginCodes:     newMemoryLoginCodeRepository(),
-		RefreshTokens:  newMemoryRefreshTokenRepository(),
 		PasswordHasher: auth.NewBcryptHasher(),
 		TokenManager:   tokenManager,
 		MobileVerifier: fixedMobileVerifier{phone: "13800138000"},
-		SMSSender:      noopSMSSender{},
+		SMSSender:      newNoopSMSSender(),
 		CodeSecret:     "test-code-secret",
 	})
 }
@@ -180,14 +236,38 @@ type fixedMobileVerifier struct {
 	phone string
 }
 
-func (v fixedMobileVerifier) Verify(ctx context.Context, accessToken string) (string, error) {
-	return v.phone, nil
+func (v fixedMobileVerifier) Verify(ctx context.Context, accessToken string) (provider.MobileVerifyResult, error) {
+	return provider.MobileVerifyResult{Phone: v.phone}, nil
 }
 
-type noopSMSSender struct{}
+type noopSMSSender struct {
+	mu    sync.Mutex
+	codes map[string]bool
+}
 
-func (noopSMSSender) SendCode(ctx context.Context, phone string, code string) error {
+func newNoopSMSSender() *noopSMSSender {
+	return &noopSMSSender{codes: map[string]bool{}}
+}
+
+func (s *noopSMSSender) allow(phone string, scene provider.SMSScene, code string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.codes[phone+":"+string(scene)+":"+code] = true
+}
+
+func (s *noopSMSSender) SendCode(ctx context.Context, phone string, scene provider.SMSScene) error {
 	return nil
+}
+
+func (s *noopSMSSender) CheckCode(ctx context.Context, phone string, scene provider.SMSScene, code string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := phone + ":" + string(scene) + ":" + code
+	if !s.codes[key] {
+		return false, nil
+	}
+	delete(s.codes, key)
+	return true, nil
 }
 
 type memoryUserRepository struct {
@@ -211,6 +291,18 @@ func (r *memoryUserRepository) FindByID(ctx context.Context, id int64) (User, er
 		return User{}, ErrNotFound
 	}
 	return item, nil
+}
+
+func (r *memoryUserRepository) FindByIDs(ctx context.Context, ids []int64) ([]User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var result []User
+	for _, id := range ids {
+		if item, ok := r.items[id]; ok {
+			result = append(result, item)
+		}
+	}
+	return result, nil
 }
 
 func (r *memoryUserRepository) FindByPhone(ctx context.Context, phone string) (User, error) {
@@ -296,6 +388,46 @@ func (r *memoryUserRepository) UpdatePassword(ctx context.Context, id int64, use
 	return nil
 }
 
+func (r *memoryUserRepository) UpdatePhone(ctx context.Context, id int64, phone string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item, ok := r.items[id]
+	if !ok {
+		return ErrNotFound
+	}
+	item.Phone = phone
+	item.UpdatedAt = time.Now()
+	r.items[id] = item
+	return nil
+}
+
+func (r *memoryUserRepository) UpdateProfile(ctx context.Context, id int64, update ProfileUpdate) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item, ok := r.items[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if update.Nickname != nil {
+		item.Nickname = *update.Nickname
+	}
+	if update.Gender != nil {
+		item.Gender = *update.Gender
+	}
+	if update.Region != nil {
+		item.Region = *update.Region
+	}
+	if update.Bio != nil {
+		item.Bio = *update.Bio
+	}
+	if update.Avatar != nil {
+		item.Avatar = *update.Avatar
+	}
+	item.UpdatedAt = time.Now()
+	r.items[id] = item
+	return nil
+}
+
 func (r *memoryUserRepository) TouchLastLogin(ctx context.Context, id int64, loginAt time.Time, meta ClientMeta) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -369,44 +501,6 @@ func (r *memoryLoginCodeRepository) seed(phone string, scene string, codeHash st
 	})
 }
 
-type memoryRefreshTokenRepository struct {
-	mu    sync.Mutex
-	items map[string]RefreshToken
-}
-
 func stringPtr(value string) *string {
 	return &value
-}
-
-func newMemoryRefreshTokenRepository() *memoryRefreshTokenRepository {
-	return &memoryRefreshTokenRepository{items: map[string]RefreshToken{}}
-}
-
-func (r *memoryRefreshTokenRepository) Create(ctx context.Context, item *RefreshToken) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.items[item.TokenHash] = *item
-	return nil
-}
-
-func (r *memoryRefreshTokenRepository) FindValid(ctx context.Context, tokenHash string, now time.Time) (RefreshToken, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	item, ok := r.items[tokenHash]
-	if !ok || item.RevokedAt != nil || !item.ExpiresAt.After(now) {
-		return RefreshToken{}, ErrNotFound
-	}
-	return item, nil
-}
-
-func (r *memoryRefreshTokenRepository) Revoke(ctx context.Context, tokenHash string, revokedAt time.Time) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	item, ok := r.items[tokenHash]
-	if !ok {
-		return ErrNotFound
-	}
-	item.RevokedAt = &revokedAt
-	r.items[tokenHash] = item
-	return nil
 }
