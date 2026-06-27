@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"ooop-admin-api/internal/auth"
+	"ooop-admin-api/internal/logger"
 	"ooop-admin-api/internal/provider"
 )
 
@@ -409,6 +410,7 @@ func (s *AuthService) BindPushRegistration(ctx context.Context, userID int64, pl
 	platform = normalizeMetaValue(platform)
 
 	if registrationID == "" {
+		logger.Warnf("绑定 push registration 失败: user_id=%d, registration_id 为空", userID)
 		return ErrInvalidProfile
 	}
 
@@ -417,7 +419,16 @@ func (s *AuthService) BindPushRegistration(ctx context.Context, userID int64, pl
 		return err
 	}
 
-	return s.users.UpdatePushRegistration(ctx, userID, platform, registrationID)
+	if err := s.users.UpdatePushRegistration(ctx, userID, platform, registrationID); err != nil {
+		return err
+	}
+	logger.Infof(
+		"绑定 push registration 成功: user_id=%d, platform=%s, registration_id=%s",
+		userID,
+		platform,
+		registrationID,
+	)
+	return nil
 }
 
 func (s *AuthService) ListUsers(ctx context.Context, query UserListQuery) (UserListResult, error) {

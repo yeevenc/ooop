@@ -9,6 +9,7 @@ import (
 
 	"ooop-admin-api/internal/auth"
 	"ooop-admin-api/internal/httpx"
+	"ooop-admin-api/internal/logger"
 	"ooop-admin-api/internal/provider"
 )
 
@@ -226,6 +227,12 @@ func (h *Handler) bindPushRegistration(c *gin.Context) {
 	if !bindJSON(c, &req) {
 		return
 	}
+	logger.Infof(
+		"收到 push registration 绑定请求: user_id=%d, platform=%s, registration_id=%s",
+		userID,
+		req.Platform,
+		req.RegistrationID,
+	)
 	err := h.service.BindPushRegistration(c.Request.Context(), userID, req.Platform, req.RegistrationID)
 	writeServiceResult(c, gin.H{"bound": true}, err)
 }

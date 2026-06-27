@@ -20,10 +20,10 @@ type JiguangPusher struct {
 }
 
 type JiguangPushPayload struct {
-	RegistrationID string
-	Title          string
-	Alert          string
-	ActivityID     int64
+	Alias      string
+	Title      string
+	Alert      string
+	ActivityID int64
 }
 
 func NewJiguangPusher(cfg config.JiguangConfig) *JiguangPusher {
@@ -36,9 +36,9 @@ func NewJiguangPusher(cfg config.JiguangConfig) *JiguangPusher {
 }
 
 func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) error {
-	registrationID := strings.TrimSpace(payload.RegistrationID)
-	if registrationID == "" {
-		return errors.New("极光 registrationId 不能为空")
+	alias := strings.TrimSpace(payload.Alias)
+	if alias == "" {
+		return errors.New("极光推送别名不能为空")
 	}
 	if strings.TrimSpace(payload.Title) == "" || strings.TrimSpace(payload.Alert) == "" {
 		return errors.New("极光推送标题或内容不能为空")
@@ -53,7 +53,7 @@ func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) er
 	requestBody := map[string]interface{}{
 		"platform": "all",
 		"audience": map[string]interface{}{
-			"registration_id": []string{registrationID},
+			"alias": []string{alias},
 		},
 		"notification": map[string]interface{}{
 			"alert": payload.Alert,

@@ -9,14 +9,12 @@ import (
 	"time"
 
 	"ooop-admin-api/internal/provider"
-	"ooop-admin-api/internal/user"
 )
 
 var ErrNotFound = errors.New("消息不存在")
 
 type Service struct {
 	messages Repository
-	users    user.UserRepository
 	pusher   PushSender
 }
 
@@ -24,10 +22,9 @@ type PushSender interface {
 	Push(ctx context.Context, payload provider.JiguangPushPayload) error
 }
 
-func NewService(messages Repository, users user.UserRepository, pusher PushSender) *Service {
+func NewService(messages Repository, pusher PushSender) *Service {
 	return &Service{
 		messages: messages,
-		users:    users,
 		pusher:   pusher,
 	}
 }
@@ -98,22 +95,14 @@ func formatID(id int64) string {
 }
 
 func (s *Service) pushToUser(ctx context.Context, userID int64, title string, content string, activityID int64) error {
-	if s.pusher == nil || s.users == nil {
-		return nil
-	}
-
-	userInfo, err := s.users.FindByID(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(userInfo.RegistrationID) == "" {
+	if s.pusher == nil {
 		return nil
 	}
 
 	return s.pusher.Push(ctx, provider.JiguangPushPayload{
-		RegistrationID: userInfo.RegistrationID,
-		Title:          title,
-		Alert:          content,
-		ActivityID:     activityID,
+		Alias:      strconv.FormatInt(userID, 10),
+		Title:      title,
+		Alert:      content,
+		ActivityID: activityID,
 	})
 }
