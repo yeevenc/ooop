@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"ooop-admin-api/internal/logger"
 	"ooop-admin-api/internal/provider"
 )
 
@@ -96,13 +97,22 @@ func formatID(id int64) string {
 
 func (s *Service) pushToUser(ctx context.Context, userID int64, title string, content string, activityID int64) error {
 	if s.pusher == nil {
+		logger.Warnf("极光推送跳过: pusher 未初始化, user_id=%d, activity_id=%d", userID, activityID)
 		return nil
 	}
 
-	return s.pusher.Push(ctx, provider.JiguangPushPayload{
-		Alias:      strconv.FormatInt(userID, 10),
+	alias := strconv.FormatInt(userID, 10)
+	logger.Infof("准备发送极光推送: user_id=%d, alias=%s, activity_id=%d, title=%s", userID, alias, activityID, title)
+
+	if err := s.pusher.Push(ctx, provider.JiguangPushPayload{
+		Alias:      alias,
 		Title:      title,
 		Alert:      content,
 		ActivityID: activityID,
-	})
+	}); err != nil {
+		logger.Errorf("极光推送发送失败: user_id=%d, alias=%s, activity_id=%d, error=%v", userID, alias, activityID, err)
+		return err
+	}
+
+	return nil
 }

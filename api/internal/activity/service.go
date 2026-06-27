@@ -12,6 +12,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"ooop-admin-api/internal/logger"
 	"ooop-admin-api/internal/user"
 )
 
@@ -832,7 +833,9 @@ func (s *Service) ReviewActivity(ctx context.Context, id int64, approve bool) (P
 	item.Status = next
 	if s.reviewNotifier != nil {
 		// 审核状态以活动更新为准，站内消息失败不阻断后台审核流程。
-		_ = s.reviewNotifier.CreateActivityReviewMessage(ctx, item.UserID, item.ID, item.Title, approve)
+		if err := s.reviewNotifier.CreateActivityReviewMessage(ctx, item.UserID, item.ID, item.Title, approve); err != nil {
+			logger.Errorf("活动审核通知发送失败: activity_id=%d, user_id=%d, approved=%t, error=%v", item.ID, item.UserID, approve, err)
+		}
 	}
 	return s.toPublic(ctx, item), nil
 }

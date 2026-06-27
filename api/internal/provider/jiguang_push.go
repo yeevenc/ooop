@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"ooop-admin-api/internal/config"
+	"ooop-admin-api/internal/logger"
 )
 
 type JiguangPusher struct {
@@ -64,7 +65,12 @@ func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) er
 				"alert":    payload.Alert,
 				"title":    payload.Title,
 				"category": defaultHarmonyOSCategory,
-				"intent":   defaultHarmonyOSIntent,
+				"intent": map[string]interface{}{
+					"url": defaultHarmonyOSIntent,
+				},
+				"badge_add_num": 1,
+				"push_type":     0,
+				"test_message":  false,
 				"extras": map[string]interface{}{
 					"activityId": fmt.Sprintf("%d", payload.ActivityID),
 				},
@@ -100,7 +106,7 @@ func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) er
 		return err
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("极光推送请求失败: %s", resp.Status)
+		return fmt.Errorf("极光推送请求失败: %s, response=%s", resp.Status, string(respBody))
 	}
 
 	var result map[string]interface{}
@@ -112,5 +118,6 @@ func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) er
 		return fmt.Errorf("极光推送返回失败: %s", string(errorText))
 	}
 
+	logger.Infof("极光推送发送成功: alias=%s, title=%s, response=%s", alias, payload.Title, string(respBody))
 	return nil
 }
