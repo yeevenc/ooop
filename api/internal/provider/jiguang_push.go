@@ -19,6 +19,7 @@ type JiguangPusher struct {
 	httpClient *http.Client
 }
 
+const defaultHarmonyOSCategory = "CATEGORY_RECOMMENDATION"
 type JiguangPushPayload struct {
 	Alias      string
 	Title      string
@@ -60,13 +61,17 @@ func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) er
 			"hmos": map[string]interface{}{
 				"alert": payload.Alert,
 				"title": payload.Title,
+				"category": defaultHarmonyOSCategory,
 				"extras": map[string]interface{}{
 					"activityId": fmt.Sprintf("%d", payload.ActivityID),
 				},
 			},
+			
 		},
 		"options": map[string]interface{}{
 			"time_to_live": 86400,
+			"classification":1,// 消息分类，0：代表运营消息。1：代表系统消息。
+			"active_push": true,//true-使用亮屏推送，false-不使用亮屏推送
 		},
 	}
 
