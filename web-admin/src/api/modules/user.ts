@@ -18,6 +18,8 @@ export interface UserItem {
   bio: string
   platform: string
   device_no: string
+  push_platform: string
+  registration_id: string
   status: number
   register_source: string
   last_login_at: string | null

@@ -64,6 +64,8 @@ type PublicUser struct {
 	Bio            string     `json:"bio"`
 	Platform       string     `json:"platform"`
 	DeviceNo       string     `json:"device_no"`
+	PushPlatform   string     `json:"push_platform"`
+	RegistrationID string     `json:"registration_id"`
 	Status         int        `json:"status"`
 	CreditScore    int        `json:"credit_score"`
 	RegisterSource string     `json:"register_source"`
@@ -87,6 +89,8 @@ func ToPublicUser(item User) PublicUser {
 		Bio:            item.Bio,
 		Platform:       item.Platform,
 		DeviceNo:       item.DeviceNo,
+		PushPlatform:   item.PushPlatform,
+		RegistrationID: item.RegistrationID,
 		Status:         item.Status,
 		CreditScore:    item.CreditScore,
 		RegisterSource: item.RegisterSource,

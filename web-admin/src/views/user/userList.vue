@@ -180,6 +180,16 @@ onMounted(() => {
             {{ row.device_no || '-' }}
           </template>
         </el-table-column>
+        <el-table-column prop="push_platform" label="推送平台" min-width="120">
+          <template #default="{ row }">
+            {{ row.push_platform || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="registration_id" label="Registration ID" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            {{ row.registration_id || '-' }}
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="getStatusType(row.status)">{{ getStatusText(row.status) }}</el-tag>
