@@ -30,6 +30,14 @@ type JiguangPushPayload struct {
 	ActivityID int64
 }
 
+type JiguangPushResult struct {
+	Triggered bool   `json:"triggered"`
+	Success   bool   `json:"success"`
+	Alias     string `json:"alias"`
+	Message   string `json:"message"`
+	Response  string `json:"response,omitempty"`
+}
+
 func NewJiguangPusher(cfg config.JiguangConfig) *JiguangPusher {
 	return &JiguangPusher{
 		cfg: cfg,
@@ -39,19 +47,31 @@ func NewJiguangPusher(cfg config.JiguangConfig) *JiguangPusher {
 	}
 }
 
-func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) error {
+func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) (JiguangPushResult, error) {
 	alias := strings.TrimSpace(payload.Alias)
+	result := JiguangPushResult{
+		Triggered: true,
+		Alias:     alias,
+	}
 	if alias == "" {
-		return errors.New("极光推送别名不能为空")
+		err := errors.New("极光推送别名不能为空")
+		result.Message = err.Error()
+		return result, err
 	}
 	if strings.TrimSpace(payload.Title) == "" || strings.TrimSpace(payload.Alert) == "" {
-		return errors.New("极光推送标题或内容不能为空")
+		err := errors.New("极光推送标题或内容不能为空")
+		result.Message = err.Error()
+		return result, err
 	}
 	if strings.TrimSpace(p.cfg.PushURL) == "" {
-		return errors.New("极光推送地址未配置")
+		err := errors.New("极光推送地址未配置")
+		result.Message = err.Error()
+		return result, err
 	}
 	if strings.TrimSpace(p.cfg.AppKey) == "" || strings.TrimSpace(p.cfg.MasterSecret) == "" {
-		return errors.New("极光推送鉴权配置缺失")
+		err := errors.New("极光推送鉴权配置缺失")
+		result.Message = err.Error()
+		return result, err
 	}
 
 	requestBody := map[string]interface{}{
@@ -85,39 +105,51 @@ func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) er
 
 	body, err := json.Marshal(requestBody)
 	if err != nil {
-		return err
+		result.Message = err.Error()
+		return result, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.cfg.PushURL, bytes.NewReader(body))
 	if err != nil {
-		return err
+		result.Message = err.Error()
+		return result, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.SetBasicAuth(p.cfg.AppKey, p.cfg.MasterSecret)
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
-		return err
+		result.Message = err.Error()
+		return result, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		result.Message = err.Error()
+		return result, err
 	}
+	result.Response = string(respBody)
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("极光推送请求失败: %s, response=%s", resp.Status, string(respBody))
+		err := fmt.Errorf("极光推送请求失败: %s, response=%s", resp.Status, string(respBody))
+		result.Message = err.Error()
+		return result, err
 	}
 
-	var result map[string]interface{}
-	if err := json.Unmarshal(respBody, &result); err != nil {
-		return err
+	var resultData map[string]interface{}
+	if err := json.Unmarshal(respBody, &resultData); err != nil {
+		result.Message = err.Error()
+		return result, err
 	}
-	if rawError, ok := result["error"]; ok {
+	if rawError, ok := resultData["error"]; ok {
 		errorText, _ := json.Marshal(rawError)
-		return fmt.Errorf("极光推送返回失败: %s", string(errorText))
+		err := fmt.Errorf("极光推送返回失败: %s", string(errorText))
+		result.Message = err.Error()
+		return result, err
 	}
 
 	logger.Infof("极光推送发送成功: alias=%s, title=%s, response=%s", alias, payload.Title, string(respBody))
-	return nil
+	result.Success = true
+	result.Message = "极光推送发送成功"
+	return result, nil
 }

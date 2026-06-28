@@ -45,6 +45,19 @@ export interface ActivityListResult {
   page_size: number
 }
 
+export interface PushNotificationResult {
+  triggered: boolean
+  success: boolean
+  alias: string
+  message: string
+  response?: string
+}
+
+export interface AdminActivityReviewResult {
+  activity: AdminActivity
+  notification: PushNotificationResult
+}
+
 // 后台可改的活动文本字段（日期/坐标/图片/发起人/状态不在此处改）。
 export interface UpdateActivityPayload {
   title: string
@@ -78,7 +91,7 @@ export function deleteActivity(id: string | number) {
 
 // 审核：通过 / 拒绝（仅对待审核活动生效）。
 export function reviewActivity(id: string | number, action: 'approve' | 'reject') {
-  return put<AdminActivity>(`admin/activities/${id}/review`, { action })
+  return put<AdminActivityReviewResult>(`admin/activities/${id}/review`, { action })
 }
 
 // 上下架：taken_down 下架 / ongoing 恢复。

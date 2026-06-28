@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm"
 
 	"ooop-admin-api/internal/logger"
+	"ooop-admin-api/internal/provider"
 	"ooop-admin-api/internal/user"
 )
 
@@ -82,8 +83,8 @@ type Service struct {
 }
 
 type ReviewNotifier interface {
-	CreateActivityReviewMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, approved bool) error
-	CreateActivityRegistrationMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, applicantName string) error
+	CreateActivityReviewMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, approved bool) (provider.JiguangPushResult, error)
+	CreateActivityRegistrationMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, applicantName string) (provider.JiguangPushResult, error)
 }
 
 type CreateInput struct {
@@ -196,6 +197,11 @@ type AdminActivityListResult struct {
 	Total    int64            `json:"total"`
 	Page     int              `json:"page"`
 	PageSize int              `json:"page_size"`
+}
+
+type ReviewActivityResult struct {
+	Activity     PublicActivity             `json:"activity"`
+	Notification provider.JiguangPushResult `json:"notification"`
 }
 
 // AdminActivityUpdate 后台编辑活动可改字段（仅文本类；日期/截止/坐标/图片/发起人/状态保持不变）。
@@ -653,7 +659,7 @@ func (s *Service) notifyOrganizerRegistration(ctx context.Context, item Activity
 		applicantName = displayName(applicant, applicantUserID)
 	}
 
-	_ = s.reviewNotifier.CreateActivityRegistrationMessage(
+	_, _ = s.reviewNotifier.CreateActivityRegistrationMessage(
 		ctx,
 		item.UserID,
 		item.ID,
@@ -814,13 +820,13 @@ func (s *Service) DeleteOwnedActivity(ctx context.Context, ownerID, id int64) er
 }
 
 // ReviewActivity 审核：仅对「待审核」活动生效，通过→ongoing，拒绝→rejected。
-func (s *Service) ReviewActivity(ctx context.Context, id int64, approve bool) (PublicActivity, error) {
+func (s *Service) ReviewActivity(ctx context.Context, id int64, approve bool) (ReviewActivityResult, error) {
 	item, err := s.findActivity(ctx, id)
 	if err != nil {
-		return PublicActivity{}, err
+		return ReviewActivityResult{}, err
 	}
 	if item.Status != StatusPending {
-		return PublicActivity{}, ErrInvalidStatus
+		return ReviewActivityResult{}, ErrInvalidStatus
 	}
 
 	next := StatusRejected
@@ -828,16 +834,27 @@ func (s *Service) ReviewActivity(ctx context.Context, id int64, approve bool) (P
 		next = StatusOngoing
 	}
 	if err := s.activities.UpdateStatus(ctx, id, next); err != nil {
-		return PublicActivity{}, err
+		return ReviewActivityResult{}, err
 	}
 	item.Status = next
+	notification := provider.JiguangPushResult{
+		Triggered: false,
+		Success:   false,
+		Alias:     strconv.FormatInt(item.UserID, 10),
+		Message:   "未触发推送",
+	}
 	if s.reviewNotifier != nil {
 		// 审核状态以活动更新为准，站内消息失败不阻断后台审核流程。
-		if err := s.reviewNotifier.CreateActivityReviewMessage(ctx, item.UserID, item.ID, item.Title, approve); err != nil {
+		pushResult, err := s.reviewNotifier.CreateActivityReviewMessage(ctx, item.UserID, item.ID, item.Title, approve)
+		notification = pushResult
+		if err != nil {
 			logger.Errorf("活动审核通知发送失败: activity_id=%d, user_id=%d, approved=%t, error=%v", item.ID, item.UserID, approve, err)
 		}
 	}
-	return s.toPublic(ctx, item), nil
+	return ReviewActivityResult{
+		Activity:     s.toPublic(ctx, item),
+		Notification: notification,
+	}, nil
 }
 
 // SetActivityStatus 上下架：仅允许 ongoing 与 taken_down 互转。

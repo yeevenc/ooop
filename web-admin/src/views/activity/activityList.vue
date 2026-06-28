@@ -10,6 +10,7 @@ import {
   setActivityStatus,
   type AdminActivity,
   type AdminCategory,
+  type PushNotificationResult,
 } from '@/api/modules/activity'
 import { formatDateTime } from '@/utils/date'
 import ActivityEditForm from '@/components/activity/activityEditForm.vue'
@@ -101,11 +102,39 @@ async function withConfirm(message: string, run: () => Promise<void>) {
   }
 }
 
+function showReviewNotificationResult(result: PushNotificationResult | undefined, actionText: string) {
+  if (!result) {
+    ElMessage.warning(`已${actionText}，但未返回 Push 结果`)
+    return
+  }
+
+  if (result.success) {
+    ElMessage.success(`已${actionText}，Push 已发送`)
+    return
+  }
+
+  const details = [
+    `已${actionText}，但 Push 发送失败`,
+    `目标别名：${result.alias || '-'}`,
+    `触发状态：${result.triggered ? '已触发' : '未触发'}`,
+    `错误信息：${result.message || '-'}`,
+  ]
+
+  if (result.response) {
+    details.push(`极光返回：${result.response}`)
+  }
+
+  ElMessageBox.alert(details.join('\n'), 'Push 发送结果', {
+    type: 'warning',
+    confirmButtonText: '知道了',
+  })
+}
+
 function handleReview(row: AdminActivity, action: 'approve' | 'reject') {
   const text = action === 'approve' ? '通过' : '拒绝'
   withConfirm(`确认${text}活动「${row.title}」?`, async () => {
-    await reviewActivity(row.id, action)
-    ElMessage.success(`已${text}`)
+    const response = await reviewActivity(row.id, action)
+    showReviewNotificationResult(response.data.notification, text)
   })
 }
 
