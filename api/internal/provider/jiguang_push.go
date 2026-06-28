@@ -20,7 +20,7 @@ type JiguangPusher struct {
 	httpClient *http.Client
 }
 
-const defaultHarmonyOSCategory = "CATEGORY_RECOMMENDATION"
+const defaultHarmonyOSCategory = "MARKETING"
 const defaultHarmonyOSIntent = "action.system.home"
 
 type JiguangPushPayload struct {
@@ -97,7 +97,7 @@ func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) (J
 			},
 		},
 		"options": map[string]interface{}{
-			"time_to_live":   86400,
+			"time_to_live":   0,
 			"classification": 1, // 消息分类，0：代表运营消息。1：代表系统消息。
 		},
 	}
