@@ -17,6 +17,9 @@ type Repository interface {
 	Create(ctx context.Context, item *UserMessage) error
 	ListByUser(ctx context.Context, query UserMessageQuery) ([]UserMessage, error)
 	MarkRead(ctx context.Context, userID int64, id int64, readAt time.Time) error
+	MarkAllRead(ctx context.Context, userID int64, readAt time.Time) (int64, error)
+	DeleteByID(ctx context.Context, userID int64, id int64) error
+	DeleteByUser(ctx context.Context, userID int64) (int64, error)
 }
 
 type GormRepository struct {
@@ -55,6 +58,40 @@ func (r *GormRepository) MarkRead(ctx context.Context, userID int64, id int64, r
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *GormRepository) MarkAllRead(ctx context.Context, userID int64, readAt time.Time) (int64, error) {
+	result := r.db.WithContext(ctx).
+		Model(&UserMessage{}).
+		Where("user_id = ? AND read_at IS NULL", userID).
+		Update("read_at", readAt)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
+}
+
+func (r *GormRepository) DeleteByID(ctx context.Context, userID int64, id int64) error {
+	result := r.db.WithContext(ctx).
+		Where("id = ? AND user_id = ?", id, userID).
+		Delete(&UserMessage{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *GormRepository) DeleteByUser(ctx context.Context, userID int64) (int64, error) {
+	result := r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Delete(&UserMessage{})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
 }
 
 func paginate(db *gorm.DB, page int, pageSize int) *gorm.DB {

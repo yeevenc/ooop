@@ -26,7 +26,10 @@ func NewHandler(service *Service, tokenManager *auth.TokenManager) *Handler {
 func (h *Handler) Register(api *gin.RouterGroup) {
 	group := api.Group("/messages", auth.Middleware(h.tokenManager))
 	group.GET("", h.list)
+	group.PUT("/read-all", h.markAllRead)
 	group.PUT("/:id/read", h.markRead)
+	group.DELETE("", h.clear)
+	group.DELETE("/:id", h.delete)
 }
 
 func (h *Handler) list(c *gin.Context) {
@@ -59,6 +62,44 @@ func (h *Handler) markRead(c *gin.Context) {
 
 	err = h.service.MarkRead(c.Request.Context(), userID, id)
 	writeResult(c, gin.H{"id": c.Param("id")}, err)
+}
+
+func (h *Handler) markAllRead(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+
+	count, err := h.service.MarkAllRead(c.Request.Context(), userID)
+	writeResult(c, gin.H{"count": count}, err)
+}
+
+func (h *Handler) delete(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		httpx.Fail(c, http.StatusBadRequest, 400001, "消息 ID 格式不正确")
+		return
+	}
+
+	err = h.service.DeleteMessage(c.Request.Context(), userID, id)
+	writeResult(c, gin.H{"id": c.Param("id")}, err)
+}
+
+func (h *Handler) clear(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+
+	count, err := h.service.ClearMessages(c.Request.Context(), userID)
+	writeResult(c, gin.H{"count": count}, err)
 }
 
 func queryInt(c *gin.Context, key string, fallback int) int {

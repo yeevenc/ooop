@@ -91,6 +91,18 @@ func (s *Service) MarkRead(ctx context.Context, userID int64, id int64) error {
 	return s.messages.MarkRead(ctx, userID, id, time.Now())
 }
 
+func (s *Service) MarkAllRead(ctx context.Context, userID int64) (int64, error) {
+	return s.messages.MarkAllRead(ctx, userID, time.Now())
+}
+
+func (s *Service) DeleteMessage(ctx context.Context, userID int64, id int64) error {
+	return s.messages.DeleteByID(ctx, userID, id)
+}
+
+func (s *Service) ClearMessages(ctx context.Context, userID int64) (int64, error) {
+	return s.messages.DeleteByUser(ctx, userID)
+}
+
 func formatID(id int64) string {
 	return strconv.FormatInt(id, 10)
 }
