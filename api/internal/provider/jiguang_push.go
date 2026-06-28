@@ -75,7 +75,7 @@ func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) (J
 	}
 
 	requestBody := map[string]interface{}{
-		"platform": "all",
+		"platform": []string{"hmos"},
 		"audience": map[string]interface{}{
 			"alias": []string{alias},
 		},
