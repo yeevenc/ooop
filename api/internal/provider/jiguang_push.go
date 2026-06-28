@@ -89,7 +89,7 @@ func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) (J
 					"url": defaultHarmonyOSIntent,
 				},
 				"badge_add_num":1,
-				"display_foreground":1,//值为 "1" 时，APP 在前台会弹出/展示通知栏消息。 "0" 时，APP 在前台不会弹出/展示通知栏消息。
+				"display_foreground":"1",//值为 "1" 时，APP 在前台会弹出/展示通知栏消息。 "0" 时，APP 在前台不会弹出/展示通知栏消息。
 				"push_type":0,
 				"extras": map[string]interface{}{
 					"activityId": fmt.Sprintf("%d", payload.ActivityID),
