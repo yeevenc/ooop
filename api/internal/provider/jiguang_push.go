@@ -22,6 +22,8 @@ type JiguangPusher struct {
 
 const defaultHarmonyOSCategory = "WORK"
 const defaultHarmonyOSIntent = "action.system.home"
+const defaultHarmonyOSDistribution = "secondary_push"
+const defaultPushTimeToLive = 300
 
 type JiguangPushPayload struct {
 	Alias      string
@@ -88,17 +90,24 @@ func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) (J
 				"intent": map[string]interface{}{
 					"url": defaultHarmonyOSIntent,
 				},
-				"badge_add_num":1,
-				"display_foreground":"1",//值为 "1" 时，APP 在前台会弹出/展示通知栏消息。 "0" 时，APP 在前台不会弹出/展示通知栏消息。
-				"push_type":0,
+				"badge_add_num":      1,
+				"display_foreground": "1", // 值为 "1" 时，APP 在前台会弹出/展示通知栏消息。
+				"push_type":          0,
+				"test_message":       false,
 				"extras": map[string]interface{}{
 					"activityId": fmt.Sprintf("%d", payload.ActivityID),
 				},
 			},
 		},
 		"options": map[string]interface{}{
-			"time_to_live":   0,
+			"time_to_live":   defaultPushTimeToLive,
 			"classification": 1, // 消息分类，0：代表运营消息。1：代表系统消息。
+			"third_party_channel": map[string]interface{}{
+				"hmos": map[string]interface{}{
+					// 鸿蒙不指定时 VIP 默认 first_ospush；这里对齐控制台「极光通道优先，厂商辅助」。
+					"distribution": defaultHarmonyOSDistribution,
+				},
+			},
 		},
 	}
 
