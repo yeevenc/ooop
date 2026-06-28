@@ -20,7 +20,7 @@ type JiguangPusher struct {
 	httpClient *http.Client
 }
 
-const defaultHarmonyOSCategory = "MARKETING"
+const defaultHarmonyOSCategory = "WORK"
 const defaultHarmonyOSIntent = "action.system.home"
 
 type JiguangPushPayload struct {
