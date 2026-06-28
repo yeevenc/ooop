@@ -99,7 +99,6 @@ func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) (J
 		"options": map[string]interface{}{
 			"time_to_live":   86400,
 			"classification": 1, // 消息分类，0：代表运营消息。1：代表系统消息。
-			"active_push":    true,
 		},
 	}
 
