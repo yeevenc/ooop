@@ -1,34 +1,39 @@
 package upload
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"mime/multipart"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/qiniu/go-sdk/v7/auth/qbox"
+	"github.com/qiniu/go-sdk/v7/storage"
 
+	"ooop-admin-api/internal/config"
 	"ooop-admin-api/internal/httpx"
 )
 
 const (
 	imageFieldName = "file"
 	imageMaxSize   = 5 << 20
-	imageURLPrefix = "/uploads/images"
-	imageSaveDir   = "uploads/images"
+	imageKeyPrefix = "images"
 )
 
 var (
 	ErrFileRequired      = errors.New("请选择上传图片")
 	ErrFileTooLarge      = errors.New("图片大小不能超过 5MB")
 	ErrUnsupportedFormat = errors.New("仅支持 jpg、jpeg、png、webp 图片")
+	ErrQiniuNotReady     = errors.New("七牛云上传配置未完成")
 )
 
 type Handler struct {
+	cfg      config.QiniuConfig
+	uploader *storage.FormUploader
 }
 
 type ImageResult struct {
@@ -37,7 +42,17 @@ type ImageResult struct {
 }
 
 func NewHandler() *Handler {
-	return &Handler{}
+	return NewHandlerWithConfig(config.QiniuConfig{})
+}
+
+func NewHandlerWithConfig(cfg config.QiniuConfig) *Handler {
+	return &Handler{
+		cfg: cfg,
+		uploader: storage.NewFormUploader(&storage.Config{
+			UseHTTPS:      true,
+			UseCdnDomains: false,
+		}),
+	}
 }
 
 func (h *Handler) Register(api *gin.RouterGroup) {
@@ -57,24 +72,60 @@ func (h *Handler) image(c *gin.Context) {
 		return
 	}
 
-	if err := os.MkdirAll(imageSaveDir, 0755); err != nil {
-		httpx.Fail(c, http.StatusInternalServerError, 500001, err.Error())
-		return
-	}
-
 	ext := strings.ToLower(filepath.Ext(file.Filename))
-	filename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
-	savePath := filepath.Join(imageSaveDir, filename)
-	if err := c.SaveUploadedFile(file, savePath); err != nil {
+	key := buildImageKey(ext)
+	if err := h.uploadToQiniu(c.Request.Context(), file, key); err != nil {
 		httpx.Fail(c, http.StatusInternalServerError, 500001, err.Error())
 		return
 	}
 
-	publicPath := imageURLPrefix + "/" + filename
+	publicPath := "/" + key
 	httpx.OK(c, ImageResult{
-		URL:  absoluteURL(c, publicPath),
+		URL:  h.publicURL(publicPath),
 		Path: publicPath,
 	})
+}
+
+func (h *Handler) uploadToQiniu(ctx context.Context, fileHeader *multipart.FileHeader, key string) error {
+	if strings.TrimSpace(h.cfg.AccessKey) == "" ||
+		strings.TrimSpace(h.cfg.SecretKey) == "" ||
+		strings.TrimSpace(h.cfg.Bucket) == "" ||
+		h.uploader == nil {
+		return ErrQiniuNotReady
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	putPolicy := storage.PutPolicy{
+		Scope: h.cfg.Bucket,
+	}
+	token := putPolicy.UploadToken(qbox.NewMac(h.cfg.AccessKey, h.cfg.SecretKey))
+	ret := storage.PutRet{}
+	putExtra := storage.PutExtra{}
+	return h.uploader.Put(ctx, &ret, token, key, file, fileHeader.Size, &putExtra)
+}
+
+func (h *Handler) publicURL(path string) string {
+	domain := strings.TrimRight(strings.TrimSpace(h.cfg.Domain), "/")
+	if domain == "" {
+		domain = "https://source.ooopai.cn"
+	}
+	return domain + path
+}
+
+func buildImageKey(ext string) string {
+	now := time.Now()
+	return fmt.Sprintf(
+		"%s/%s/%d%s",
+		imageKeyPrefix,
+		now.Format("2006/01/02"),
+		now.UnixNano(),
+		ext,
+	)
 }
 
 func validateImage(file *multipart.FileHeader) error {
@@ -94,32 +145,6 @@ func validateImage(file *multipart.FileHeader) error {
 	default:
 		return ErrUnsupportedFormat
 	}
-}
-
-func absoluteURL(c *gin.Context, path string) string {
-	if baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("APP_PUBLIC_BASE_URL")), "/"); baseURL != "" {
-		return baseURL + path
-	}
-
-	scheme := "http"
-	if c.Request.TLS != nil {
-		scheme = "https"
-	}
-	if forwardedProto := c.GetHeader("X-Forwarded-Proto"); forwardedProto != "" {
-		scheme = firstForwardedValue(forwardedProto)
-	}
-
-	host := c.Request.Host
-	if forwardedHost := c.GetHeader("X-Forwarded-Host"); forwardedHost != "" {
-		host = firstForwardedValue(forwardedHost)
-	}
-
-	return scheme + "://" + host + path
-}
-
-func firstForwardedValue(value string) string {
-	parts := strings.Split(value, ",")
-	return strings.TrimSpace(parts[0])
 }
 
 func writeError(c *gin.Context, err error) {

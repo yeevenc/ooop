@@ -97,7 +97,7 @@ func main() {
 	activity.NewHandler(activityService, tokenManager).Register(api)
 	message.NewHandler(messageService, tokenManager).Register(api)
 	feedback.NewHandler(feedbackService, tokenManager, adminTokenManager).Register(api)
-	upload.NewHandler().Register(api)
+	upload.NewHandlerWithConfig(cfg.Qiniu).Register(api)
 	admin.NewHandler(adminService, authService, activityService, adminTokenManager).Register(api)
 
 	server := &http.Server{

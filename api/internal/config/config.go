@@ -17,6 +17,7 @@ type Config struct {
 	Auth     AuthConfig
 	Aliyun   AliyunConfig
 	Jiguang  JiguangConfig
+	Qiniu    QiniuConfig
 }
 
 type AppConfig struct {
@@ -83,6 +84,13 @@ type JiguangConfig struct {
 	PrivateKey   string
 }
 
+type QiniuConfig struct {
+	AccessKey string
+	SecretKey string
+	Bucket    string
+	Domain    string
+}
+
 func Load() Config {
 	_ = godotenv.Load()
 
@@ -135,6 +143,12 @@ func Load() Config {
 			VerifyURL:    getEnv("JIGUANG_VERIFY_URL", "https://api.verification.jpush.cn/v1/web/loginTokenVerify"),
 			PushURL:      getEnv("JIGUANG_PUSH_URL", "https://api.jpush.cn/v3/push"),
 			PrivateKey:   normalizePrivateKey(getEnv("JIGUANG_PRIVATE_KEY", "")),
+		},
+		Qiniu: QiniuConfig{
+			AccessKey: getEnv("QINIU_ACCESS_KEY", ""),
+			SecretKey: getEnv("QINIU_SECRET_KEY", ""),
+			Bucket:    getEnv("QINIU_BUCKET", "ooop"),
+			Domain:    getEnv("QINIU_DOMAIN", "https://source.ooopai.cn"),
 		},
 	}
 }
