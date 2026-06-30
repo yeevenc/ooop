@@ -442,6 +442,22 @@ func (r *memoryUserRepository) UpdatePushRegistration(ctx context.Context, id in
 	return nil
 }
 
+func (r *memoryUserRepository) UpdateRealNameVerification(ctx context.Context, id int64, realName string, idCardMask string, verifiedAt time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item, ok := r.items[id]
+	if !ok {
+		return ErrNotFound
+	}
+	item.RealName = realName
+	item.IDCardMask = idCardMask
+	item.RealNameVerified = true
+	item.RealNameVerifiedAt = &verifiedAt
+	item.UpdatedAt = time.Now()
+	r.items[id] = item
+	return nil
+}
+
 func (r *memoryUserRepository) TouchLastLogin(ctx context.Context, id int64, loginAt time.Time, meta ClientMeta) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

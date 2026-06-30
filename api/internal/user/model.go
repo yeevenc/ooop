@@ -129,29 +129,31 @@ func ToPublicUserWithStats(item User, stats UserStats) PublicUser {
 // UserPublicProfile 是对外（查看他人主页）暴露的安全资料子集，
 // 不含手机号/设备号/状态/注册来源等敏感字段。
 type UserPublicProfile struct {
-	ID             string    `json:"id"`
-	Nickname       string    `json:"nickname"`
-	Avatar         string    `json:"avatar"`
-	Gender         string    `json:"gender"`
-	Region         string    `json:"region"`
-	Bio            string    `json:"bio"`
-	CreditScore    int       `json:"creditScore"`
-	CreatedAt      time.Time `json:"createdAt"`
-	PublishedCount int       `json:"publishedCount"`
-	JoinedCount    int       `json:"joinedCount"`
-	LikedCount     int       `json:"likedCount"`
+	ID               string    `json:"id"`
+	Nickname         string    `json:"nickname"`
+	Avatar           string    `json:"avatar"`
+	Gender           string    `json:"gender"`
+	Region           string    `json:"region"`
+	Bio              string    `json:"bio"`
+	CreditScore      int       `json:"creditScore"`
+	RealNameVerified bool      `json:"realNameVerified"`
+	CreatedAt        time.Time `json:"createdAt"`
+	PublishedCount   int       `json:"publishedCount"`
+	JoinedCount      int       `json:"joinedCount"`
+	LikedCount       int       `json:"likedCount"`
 }
 
 func ToUserPublicProfile(item User) UserPublicProfile {
 	return UserPublicProfile{
-		ID:          strconv.FormatInt(item.ID, 10),
-		Nickname:    item.Nickname,
-		Avatar:      AvatarURL(item.Avatar),
-		Gender:      item.Gender,
-		Region:      item.Region,
-		Bio:         item.Bio,
-		CreditScore: item.CreditScore,
-		CreatedAt:   item.CreatedAt,
+		ID:               strconv.FormatInt(item.ID, 10),
+		Nickname:         item.Nickname,
+		Avatar:           AvatarURL(item.Avatar),
+		Gender:           item.Gender,
+		Region:           item.Region,
+		Bio:              item.Bio,
+		CreditScore:      item.CreditScore,
+		RealNameVerified: item.RealNameVerified,
+		CreatedAt:        item.CreatedAt,
 	}
 }
 

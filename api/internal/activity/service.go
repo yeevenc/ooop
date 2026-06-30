@@ -1125,7 +1125,7 @@ func (s *Service) organizer(ctx context.Context, userID int64) Organizer {
 		Rating:           5,
 		PersonalityLabel: "",
 		CompletionRate:   100,
-		Verified:         true,
+		Verified:         item.RealNameVerified,
 	}
 }
 

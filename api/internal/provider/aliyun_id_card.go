@@ -82,12 +82,27 @@ func (v *AliyunIDCardVerifier) Verify(ctx context.Context, name string, idCard s
 }
 
 func aliyunIDCardPassed(payload map[string]interface{}) bool {
-	if value, ok := findBoolByKeys(payload, "success", "passed", "match", "matched"); ok && value {
+	if code, ok := findNumberByDirectKey(payload, "code"); ok {
+		if code != 200 {
+			return false
+		}
+		data, ok := findMapByDirectKey(payload, "data")
+		if !ok {
+			return false
+		}
+		if result, ok := findNumberByDirectKey(data, "result"); ok {
+			return result == 0
+		}
+		desc := strings.TrimSpace(findTextByDirectKey(data, "desc"))
+		return desc == "一致"
+	}
+
+	if value, ok := findBoolByKeys(payload, "passed", "match", "matched"); ok && value {
 		return true
 	}
 
 	text := strings.ToLower(strings.TrimSpace(strings.Join([]string{
-		findTextByKeys(payload, "code", "status", "result", "res", "state"),
+		findTextByKeys(payload, "status", "result", "res", "state"),
 		findTextByKeys(payload, "msg", "message", "desc", "result_msg", "reason"),
 	}, " ")))
 
@@ -111,6 +126,11 @@ func aliyunIDCardPassed(payload map[string]interface{}) bool {
 }
 
 func aliyunIDCardMessage(payload map[string]interface{}) string {
+	if data, ok := findMapByDirectKey(payload, "data"); ok {
+		if text := findTextByDirectKey(data, "desc"); text != "" {
+			return text
+		}
+	}
 	if text := findTextByKeys(payload, "msg", "message", "desc", "result_msg", "reason"); text != "" {
 		return text
 	}
@@ -151,6 +171,56 @@ func findTextByKeys(value interface{}, keys ...string) string {
 		}
 	}
 	return ""
+}
+
+func findTextByDirectKey(value map[string]interface{}, key string) string {
+	raw, ok := value[key]
+	if !ok {
+		return ""
+	}
+	switch item := raw.(type) {
+	case string:
+		return strings.TrimSpace(item)
+	case float64:
+		return fmt.Sprintf("%.0f", item)
+	case bool:
+		if item {
+			return "true"
+		}
+		return "false"
+	}
+	return ""
+}
+
+func findNumberByDirectKey(value map[string]interface{}, key string) (int, bool) {
+	raw, ok := value[key]
+	if !ok {
+		return 0, false
+	}
+	switch item := raw.(type) {
+	case float64:
+		return int(item), true
+	case string:
+		text := strings.TrimSpace(item)
+		if text == "" {
+			return 0, false
+		}
+		var number int
+		if _, err := fmt.Sscanf(text, "%d", &number); err != nil {
+			return 0, false
+		}
+		return number, true
+	}
+	return 0, false
+}
+
+func findMapByDirectKey(value map[string]interface{}, key string) (map[string]interface{}, bool) {
+	raw, ok := value[key]
+	if !ok {
+		return nil, false
+	}
+	item, ok := raw.(map[string]interface{})
+	return item, ok
 }
 
 func findBoolByKeys(value interface{}, keys ...string) (bool, bool) {
