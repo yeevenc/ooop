@@ -23,6 +23,7 @@ type UserRepository interface {
 	UpdatePushRegistration(ctx context.Context, id int64, platform string, registrationID string) error
 	UpdateRealNameVerification(ctx context.Context, id int64, realName string, idCardMask string, gender string, verifiedAt time.Time) error
 	TouchLastLogin(ctx context.Context, id int64, loginAt time.Time, meta ClientMeta) error
+	CancelAccount(ctx context.Context, id int64) error
 }
 
 type LoginCodeRepository interface {
@@ -153,6 +154,46 @@ func (r *GormUserRepository) TouchLastLogin(ctx context.Context, id int64, login
 		updates["device_no"] = meta.DeviceNo
 	}
 	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *GormUserRepository) CancelAccount(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var item User
+		if err := tx.First(&item, id).Error; err != nil {
+			return normalizeNotFound(err)
+		}
+
+		var activityIDs []int64
+		if err := tx.Table("activities").Where("user_id = ?", id).Pluck("id", &activityIDs).Error; err != nil {
+			return err
+		}
+
+		// 注销账号需要删除与该用户直接关联的数据，避免旧手机号再次登录时继承历史关系。
+		if len(activityIDs) > 0 {
+			if err := tx.Exec("DELETE FROM activity_participants WHERE activity_id IN ?", activityIDs).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Exec("DELETE FROM activities WHERE user_id = ?", id).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM activity_participants WHERE user_id = ?", id).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM user_messages WHERE user_id = ?", id).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM feedbacks WHERE user_id = ?", id).Error; err != nil {
+			return err
+		}
+		if item.Phone != "" {
+			if err := tx.Exec("DELETE FROM login_codes WHERE phone = ?", item.Phone).Error; err != nil {
+				return err
+			}
+		}
+
+		return tx.Delete(&User{}, id).Error
+	})
 }
 
 type GormLoginCodeRepository struct {

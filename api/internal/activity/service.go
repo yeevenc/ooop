@@ -49,6 +49,7 @@ type PublicParticipant struct {
 	UserID      string `json:"userId"`
 	Name        string `json:"name"`
 	Avatar      string `json:"avatar"`
+	Gender      string `json:"gender"`
 	AvatarColor string `json:"avatarColor"`
 	IsOnline    bool   `json:"isOnline"`
 }
@@ -612,6 +613,7 @@ func (s *Service) approvedParticipants(ctx context.Context, activityID int64) []
 			UserID:      strconv.FormatInt(p.UserID, 10),
 			Name:        displayName(u, p.UserID),
 			Avatar:      user.AvatarURL(u.Avatar),
+			Gender:      u.Gender,
 			AvatarColor: "#8fa061",
 			IsOnline:    false,
 		})

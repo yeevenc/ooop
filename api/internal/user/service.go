@@ -437,6 +437,13 @@ func (s *AuthService) BindPushRegistration(ctx context.Context, userID int64, pl
 	return nil
 }
 
+func (s *AuthService) CancelAccount(ctx context.Context, userID int64) error {
+	if userID <= 0 {
+		return ErrNotFound
+	}
+	return s.users.CancelAccount(ctx, userID)
+}
+
 func (s *AuthService) VerifyRealName(ctx context.Context, userID int64, name string, idCard string) (PublicUser, error) {
 	name = strings.TrimSpace(name)
 	idCard = strings.ToUpper(strings.TrimSpace(idCard))

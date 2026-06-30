@@ -234,6 +234,30 @@ func TestVerifyRealNameDoesNotSkipVerifierWhenAlreadyVerified(t *testing.T) {
 	}
 }
 
+func TestCancelAccountDeletesUserAndAllowsPhoneReuse(t *testing.T) {
+	service := newTestAuthService()
+	ctx := context.Background()
+
+	first, err := service.RegisterByPassword(ctx, "13700137001", "cancel_user", "password123", ClientMeta{})
+	if err != nil {
+		t.Fatalf("RegisterByPassword(first) error = %v", err)
+	}
+	if err := service.CancelAccount(ctx, first.User.ID); err != nil {
+		t.Fatalf("CancelAccount() error = %v", err)
+	}
+	if _, err := service.Profile(ctx, first.User.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Profile(after cancel) error = %v, want ErrNotFound", err)
+	}
+
+	second, err := service.RegisterByPassword(ctx, "13700137001", "new_cancel_user", "password123", ClientMeta{})
+	if err != nil {
+		t.Fatalf("RegisterByPassword(second) error = %v", err)
+	}
+	if second.User.ID == first.User.ID {
+		t.Fatalf("reused user id = %d, want new user", second.User.ID)
+	}
+}
+
 func TestListUsersReturnsPagedPublicUsers(t *testing.T) {
 	service := newTestAuthService()
 	ctx := context.Background()
@@ -542,6 +566,16 @@ func (r *memoryUserRepository) TouchLastLogin(ctx context.Context, id int64, log
 		item.DeviceNo = meta.DeviceNo
 	}
 	r.items[id] = item
+	return nil
+}
+
+func (r *memoryUserRepository) CancelAccount(ctx context.Context, id int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.items[id]; !ok {
+		return ErrNotFound
+	}
+	delete(r.items, id)
 	return nil
 }
 

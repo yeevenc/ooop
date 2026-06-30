@@ -40,6 +40,7 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	userGroup.PUT("/phone", h.changePhone)
 	userGroup.PUT("/push-registration", h.bindPushRegistration)
 	userGroup.POST("/real-name-verify", h.realNameVerify)
+	userGroup.DELETE("/account", h.cancelAccount)
 
 	// 公开的他人用户资料（安全子集），用于用户主页展示。
 	api.GET("/users/:id", h.publicProfile)
@@ -253,6 +254,16 @@ func (h *Handler) realNameVerify(c *gin.Context) {
 	}
 	result, err := h.service.VerifyRealName(c.Request.Context(), userID, req.Name, req.IDCard)
 	writeServiceResult(c, result, err)
+}
+
+func (h *Handler) cancelAccount(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+	err := h.service.CancelAccount(c.Request.Context(), userID)
+	writeServiceResult(c, gin.H{"cancelled": true}, err)
 }
 
 func bindJSON(c *gin.Context, target interface{}) bool {
