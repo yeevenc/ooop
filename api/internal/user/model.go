@@ -22,25 +22,29 @@ const (
 )
 
 type User struct {
-	ID             int64      `gorm:"primaryKey;autoIncrement" json:"id"`
-	Phone          string     `gorm:"size:20;not null;uniqueIndex" json:"phone"`
-	Username       *string    `gorm:"size:64;uniqueIndex" json:"username"`
-	Nickname       string     `gorm:"size:64;not null;default:''" json:"nickname"`
-	Avatar         string     `gorm:"size:255;not null;default:''" json:"avatar"`
-	Gender         string     `gorm:"size:16;not null;default:''" json:"gender"`
-	Region         string     `gorm:"size:64;not null;default:''" json:"region"`
-	Bio            string     `gorm:"size:255;not null;default:''" json:"bio"`
-	Platform       string     `gorm:"size:32;not null;default:''" json:"platform"`
-	DeviceNo       string     `gorm:"size:128;not null;default:''" json:"device_no"`
-	PushPlatform   string     `gorm:"size:32;not null;default:''" json:"push_platform"`
-	RegistrationID string     `gorm:"size:128;not null;default:''" json:"registration_id"`
-	PasswordHash   string     `gorm:"size:255" json:"-"`
-	Status         int        `gorm:"not null;default:1" json:"status"`
-	CreditScore    int        `gorm:"not null;default:100" json:"credit_score"` // 靠谱值（满分 100，评分逻辑后续接入）
-	RegisterSource string     `gorm:"size:32;not null" json:"register_source"`
-	LastLoginAt    *time.Time `json:"last_login_at"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID                 int64      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Phone              string     `gorm:"size:20;not null;uniqueIndex" json:"phone"`
+	Username           *string    `gorm:"size:64;uniqueIndex" json:"username"`
+	Nickname           string     `gorm:"size:64;not null;default:''" json:"nickname"`
+	Avatar             string     `gorm:"size:255;not null;default:''" json:"avatar"`
+	Gender             string     `gorm:"size:16;not null;default:''" json:"gender"`
+	Region             string     `gorm:"size:64;not null;default:''" json:"region"`
+	Bio                string     `gorm:"size:255;not null;default:''" json:"bio"`
+	Platform           string     `gorm:"size:32;not null;default:''" json:"platform"`
+	DeviceNo           string     `gorm:"size:128;not null;default:''" json:"device_no"`
+	PushPlatform       string     `gorm:"size:32;not null;default:''" json:"push_platform"`
+	RegistrationID     string     `gorm:"size:128;not null;default:''" json:"registration_id"`
+	PasswordHash       string     `gorm:"size:255" json:"-"`
+	RealName           string     `gorm:"size:64;not null;default:''" json:"real_name"`
+	IDCardMask         string     `gorm:"size:32;not null;default:''" json:"id_card_mask"`
+	RealNameVerified   bool       `gorm:"column:is_real_name_verified;not null;default:false" json:"is_real_name_verified"`
+	RealNameVerifiedAt *time.Time `json:"real_name_verified_at"`
+	Status             int        `gorm:"not null;default:1" json:"status"`
+	CreditScore        int        `gorm:"not null;default:100" json:"credit_score"` // 靠谱值（满分 100，评分逻辑后续接入）
+	RegisterSource     string     `gorm:"size:32;not null" json:"register_source"`
+	LastLoginAt        *time.Time `json:"last_login_at"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 type LoginCode struct {
@@ -54,49 +58,57 @@ type LoginCode struct {
 }
 
 type PublicUser struct {
-	ID             int64      `json:"id"`
-	Phone          string     `json:"phone"`
-	Username       string     `json:"username"`
-	Nickname       string     `json:"nickname"`
-	Avatar         string     `json:"avatar"`
-	Gender         string     `json:"gender"`
-	Region         string     `json:"region"`
-	Bio            string     `json:"bio"`
-	Platform       string     `json:"platform"`
-	DeviceNo       string     `json:"device_no"`
-	PushPlatform   string     `json:"push_platform"`
-	RegistrationID string     `json:"registration_id"`
-	Status         int        `json:"status"`
-	CreditScore    int        `json:"credit_score"`
-	RegisterSource string     `json:"register_source"`
-	HasPassword    bool       `json:"has_password"`
-	LastLoginAt    *time.Time `json:"last_login_at"`
-	CreatedAt      time.Time  `json:"created_at"`
-	PublishedCount int        `json:"published_count"`
-	JoinedCount    int        `json:"joined_count"`
-	LikedCount     int        `json:"liked_count"`
+	ID                 int64      `json:"id"`
+	Phone              string     `json:"phone"`
+	Username           string     `json:"username"`
+	Nickname           string     `json:"nickname"`
+	Avatar             string     `json:"avatar"`
+	Gender             string     `json:"gender"`
+	Region             string     `json:"region"`
+	Bio                string     `json:"bio"`
+	Platform           string     `json:"platform"`
+	DeviceNo           string     `json:"device_no"`
+	PushPlatform       string     `json:"push_platform"`
+	RegistrationID     string     `json:"registration_id"`
+	RealName           string     `json:"real_name"`
+	IDCardMask         string     `json:"id_card_mask"`
+	RealNameVerified   bool       `json:"is_real_name_verified"`
+	RealNameVerifiedAt *time.Time `json:"real_name_verified_at"`
+	Status             int        `json:"status"`
+	CreditScore        int        `json:"credit_score"`
+	RegisterSource     string     `json:"register_source"`
+	HasPassword        bool       `json:"has_password"`
+	LastLoginAt        *time.Time `json:"last_login_at"`
+	CreatedAt          time.Time  `json:"created_at"`
+	PublishedCount     int        `json:"published_count"`
+	JoinedCount        int        `json:"joined_count"`
+	LikedCount         int        `json:"liked_count"`
 }
 
 func ToPublicUser(item User) PublicUser {
 	return PublicUser{
-		ID:             item.ID,
-		Phone:          item.Phone,
-		Username:       stringValue(item.Username),
-		Nickname:       item.Nickname,
-		Avatar:         AvatarURL(item.Avatar),
-		Gender:         item.Gender,
-		Region:         item.Region,
-		Bio:            item.Bio,
-		Platform:       item.Platform,
-		DeviceNo:       item.DeviceNo,
-		PushPlatform:   item.PushPlatform,
-		RegistrationID: item.RegistrationID,
-		Status:         item.Status,
-		CreditScore:    item.CreditScore,
-		RegisterSource: item.RegisterSource,
-		HasPassword:    item.PasswordHash != "",
-		LastLoginAt:    item.LastLoginAt,
-		CreatedAt:      item.CreatedAt,
+		ID:                 item.ID,
+		Phone:              item.Phone,
+		Username:           stringValue(item.Username),
+		Nickname:           item.Nickname,
+		Avatar:             AvatarURL(item.Avatar),
+		Gender:             item.Gender,
+		Region:             item.Region,
+		Bio:                item.Bio,
+		Platform:           item.Platform,
+		DeviceNo:           item.DeviceNo,
+		PushPlatform:       item.PushPlatform,
+		RegistrationID:     item.RegistrationID,
+		RealName:           item.RealName,
+		IDCardMask:         item.IDCardMask,
+		RealNameVerified:   item.RealNameVerified,
+		RealNameVerifiedAt: item.RealNameVerifiedAt,
+		Status:             item.Status,
+		CreditScore:        item.CreditScore,
+		RegisterSource:     item.RegisterSource,
+		HasPassword:        item.PasswordHash != "",
+		LastLoginAt:        item.LastLoginAt,
+		CreatedAt:          item.CreatedAt,
 	}
 }
 

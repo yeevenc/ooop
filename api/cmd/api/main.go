@@ -55,16 +55,18 @@ func main() {
 	mobileVerifier := provider.NewJiguangMobileVerifier(cfg.Jiguang)
 	jpushPusher := provider.NewJiguangPusher(cfg.Jiguang)
 	smsSender := provider.NewAliyunSMSSender(aliyunClient, cfg.Aliyun.SMS)
+	realNameVerifier := provider.NewAliyunIDCardVerifier(cfg.Aliyun.IDCard)
 
 	authService := user.NewAuthService(user.AuthServiceOptions{
-		Users:          userRepo,
-		Stats:          activityRepo,
-		LoginCodes:     codeRepo,
-		PasswordHasher: passwordHasher,
-		TokenManager:   tokenManager,
-		MobileVerifier: mobileVerifier,
-		SMSSender:      smsSender,
-		CodeSecret:     cfg.Auth.CodeSecret,
+		Users:            userRepo,
+		Stats:            activityRepo,
+		LoginCodes:       codeRepo,
+		PasswordHasher:   passwordHasher,
+		TokenManager:     tokenManager,
+		MobileVerifier:   mobileVerifier,
+		SMSSender:        smsSender,
+		RealNameVerifier: realNameVerifier,
+		CodeSecret:       cfg.Auth.CodeSecret,
 	})
 	adminService := admin.NewService(adminRepo, passwordHasher, adminTokenManager)
 	activityService := activity.NewService(activityRepo, userRepo)

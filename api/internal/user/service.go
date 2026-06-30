@@ -29,30 +29,35 @@ var (
 	ErrPhoneExists      = errors.New("手机号已注册")
 	ErrReservedUsername = errors.New("该用户名不可使用")
 	ErrInvalidProfile   = errors.New("资料字段不合法")
+	ErrInvalidRealName  = errors.New("实名信息格式不正确")
+	ErrRealNameMismatch = errors.New("实名认证未通过")
 )
 
 var phonePattern = regexp.MustCompile(`^1[3-9]\d{9}$`)
+var idCardPattern = regexp.MustCompile(`^\d{17}[\dXx]$`)
 
 type AuthServiceOptions struct {
-	Users          UserRepository
-	Stats          UserStatsRepository
-	LoginCodes     LoginCodeRepository
-	PasswordHasher auth.PasswordHasher
-	TokenManager   *auth.TokenManager
-	MobileVerifier provider.MobileVerifier
-	SMSSender      provider.SMSSender
-	CodeSecret     string
+	Users            UserRepository
+	Stats            UserStatsRepository
+	LoginCodes       LoginCodeRepository
+	PasswordHasher   auth.PasswordHasher
+	TokenManager     *auth.TokenManager
+	MobileVerifier   provider.MobileVerifier
+	SMSSender        provider.SMSSender
+	RealNameVerifier provider.RealNameVerifier
+	CodeSecret       string
 }
 
 type AuthService struct {
-	users          UserRepository
-	stats          UserStatsRepository
-	loginCodes     LoginCodeRepository
-	passwordHasher auth.PasswordHasher
-	tokenManager   *auth.TokenManager
-	mobileVerifier provider.MobileVerifier
-	smsSender      provider.SMSSender
-	codeSecret     string
+	users            UserRepository
+	stats            UserStatsRepository
+	loginCodes       LoginCodeRepository
+	passwordHasher   auth.PasswordHasher
+	tokenManager     *auth.TokenManager
+	mobileVerifier   provider.MobileVerifier
+	smsSender        provider.SMSSender
+	realNameVerifier provider.RealNameVerifier
+	codeSecret       string
 }
 
 type LoginResult struct {
@@ -110,14 +115,15 @@ func (i ProfileUpdateInput) ToProfileUpdate() ProfileUpdate {
 
 func NewAuthService(opts AuthServiceOptions) *AuthService {
 	return &AuthService{
-		users:          opts.Users,
-		stats:          opts.Stats,
-		loginCodes:     opts.LoginCodes,
-		passwordHasher: opts.PasswordHasher,
-		tokenManager:   opts.TokenManager,
-		mobileVerifier: opts.MobileVerifier,
-		smsSender:      opts.SMSSender,
-		codeSecret:     opts.CodeSecret,
+		users:            opts.Users,
+		stats:            opts.Stats,
+		loginCodes:       opts.LoginCodes,
+		passwordHasher:   opts.PasswordHasher,
+		tokenManager:     opts.TokenManager,
+		mobileVerifier:   opts.MobileVerifier,
+		smsSender:        opts.SMSSender,
+		realNameVerifier: opts.RealNameVerifier,
+		codeSecret:       opts.CodeSecret,
 	}
 }
 
@@ -431,6 +437,55 @@ func (s *AuthService) BindPushRegistration(ctx context.Context, userID int64, pl
 	return nil
 }
 
+func (s *AuthService) VerifyRealName(ctx context.Context, userID int64, name string, idCard string) (PublicUser, error) {
+	name = strings.TrimSpace(name)
+	idCard = strings.ToUpper(strings.TrimSpace(idCard))
+	if !isValidRealName(name) || !idCardPattern.MatchString(idCard) {
+		return PublicUser{}, ErrInvalidRealName
+	}
+
+	item, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return PublicUser{}, err
+	}
+	if item.RealNameVerified {
+		stats, err := s.userStats(ctx, userID, false)
+		if err != nil {
+			return PublicUser{}, err
+		}
+		return ToPublicUserWithStats(item, stats), nil
+	}
+	if s.realNameVerifier == nil {
+		return PublicUser{}, errors.New("实名认证服务未配置")
+	}
+
+	result, err := s.realNameVerifier.Verify(ctx, name, idCard)
+	if err != nil {
+		return PublicUser{}, err
+	}
+	if !result.Passed {
+		message := strings.TrimSpace(result.Message)
+		if message == "" {
+			message = "姓名和身份证号不匹配"
+		}
+		return PublicUser{}, fmt.Errorf("%w: %s", ErrRealNameMismatch, message)
+	}
+
+	now := time.Now()
+	if err := s.users.UpdateRealNameVerification(ctx, userID, name, maskIDCard(idCard), now); err != nil {
+		return PublicUser{}, err
+	}
+	item, err = s.users.FindByID(ctx, userID)
+	if err != nil {
+		return PublicUser{}, err
+	}
+	stats, err := s.userStats(ctx, userID, false)
+	if err != nil {
+		return PublicUser{}, err
+	}
+	return ToPublicUserWithStats(item, stats), nil
+}
+
 func (s *AuthService) ListUsers(ctx context.Context, query UserListQuery) (UserListResult, error) {
 	query.Keyword = strings.TrimSpace(query.Keyword)
 	if query.Page <= 0 {
@@ -619,6 +674,19 @@ func isReservedUsername(username string) bool {
 
 func isValidPhone(phone string) bool {
 	return phonePattern.MatchString(phone)
+}
+
+func isValidRealName(name string) bool {
+	count := utf8.RuneCountInString(name)
+	return count >= 2 && count <= 32
+}
+
+func maskIDCard(value string) string {
+	value = strings.TrimSpace(value)
+	if len(value) < 8 {
+		return value
+	}
+	return value[:6] + "********" + value[len(value)-4:]
 }
 
 func randomCode() string {

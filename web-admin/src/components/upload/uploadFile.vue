@@ -173,7 +173,6 @@ const accept = ref('video/*,.mp4,.avi,.mov,.wmv,.flv,.webm,.mkv,.pag')
 
 // 额外参数
 const data = ref({
-    is_source: import.meta.env.VITE_DATA,
 });
 // 文件类型判断
 const isVideoFile = (file: any) => /\.(mp4|avi|mov|wmv|flv|webm|mkv)$/i.test(file.url || file.name || '')

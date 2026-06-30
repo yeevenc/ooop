@@ -39,6 +39,7 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	userGroup.PUT("/profile", h.updateProfile)
 	userGroup.PUT("/phone", h.changePhone)
 	userGroup.PUT("/push-registration", h.bindPushRegistration)
+	userGroup.POST("/real-name-verify", h.realNameVerify)
 
 	// 公开的他人用户资料（安全子集），用于用户主页展示。
 	api.GET("/users/:id", h.publicProfile)
@@ -237,6 +238,23 @@ func (h *Handler) bindPushRegistration(c *gin.Context) {
 	writeServiceResult(c, gin.H{"bound": true}, err)
 }
 
+func (h *Handler) realNameVerify(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+	var req struct {
+		Name   string `json:"name"`
+		IDCard string `json:"id_card"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+	result, err := h.service.VerifyRealName(c.Request.Context(), userID, req.Name, req.IDCard)
+	writeServiceResult(c, result, err)
+}
+
 func bindJSON(c *gin.Context, target interface{}) bool {
 	if err := c.ShouldBindJSON(target); err != nil {
 		httpx.Fail(c, http.StatusBadRequest, 400001, "请求参数格式不正确")
@@ -265,7 +283,9 @@ func writeServiceResult(c *gin.Context, data interface{}, err error) {
 		errors.Is(err, ErrInvalidCode),
 		errors.Is(err, ErrPhoneExists),
 		errors.Is(err, ErrReservedUsername),
-		errors.Is(err, ErrInvalidProfile):
+		errors.Is(err, ErrInvalidProfile),
+		errors.Is(err, ErrInvalidRealName),
+		errors.Is(err, ErrRealNameMismatch):
 		httpx.Fail(c, http.StatusBadRequest, 400002, err.Error())
 	case errors.Is(err, ErrInvalidAccount):
 		httpx.Fail(c, http.StatusUnauthorized, 401003, err.Error())

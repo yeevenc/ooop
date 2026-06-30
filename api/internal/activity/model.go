@@ -79,7 +79,6 @@ type PublicActivity struct {
 	Intro             string          `json:"intro"`
 	Notice            string          `json:"notice"`
 	Organizer         Organizer       `json:"organizer"`
-	OrganizerProfile  Organizer       `json:"organizerProfile"`
 	Participants      []any           `json:"participants"`
 	ActionType        string          `json:"actionType"`
 	PendingCount      int             `json:"pendingCount"`

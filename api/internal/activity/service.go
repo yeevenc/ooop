@@ -1084,7 +1084,6 @@ func (s *Service) toPublic(ctx context.Context, item Activity) PublicActivity {
 		Intro:             item.Intro,
 		Notice:            item.Notice,
 		Organizer:         organizer,
-		OrganizerProfile:  organizer,
 		Participants:      []any{},
 		ActionType:        actionType(item.CurrentCount, item.TotalCount),
 		PendingCount:      0,

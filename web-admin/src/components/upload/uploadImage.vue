@@ -144,7 +144,6 @@ const headers = {
 const uploadRef = ref();
 const action = ref(getUploadImageAction());
 const data = ref({
-  is_source: 'mindcare',
 });
 const state = reactive({
   uploadLoading: false, // 图片文件大时 呈现出一个上传中的loading状态

@@ -55,6 +55,7 @@ type AliyunConfig struct {
 	AccessKeySecret string
 	Mobile          AliyunMobileConfig
 	SMS             AliyunSMSConfig
+	IDCard          AliyunIDCardConfig
 }
 
 type AliyunMobileConfig struct {
@@ -74,6 +75,13 @@ type AliyunSMSConfig struct {
 	IntervalSeconds             int
 	DuplicatePolicy             int
 	SchemeName                  string
+}
+
+type AliyunIDCardConfig struct {
+	Endpoint  string
+	AppCode   string
+	AppKey    string
+	AppSecret string
 }
 
 type JiguangConfig struct {
@@ -135,6 +143,12 @@ func Load() Config {
 				IntervalSeconds:             getIntEnv("ALIYUN_SMS_INTERVAL_SECONDS", 60),
 				DuplicatePolicy:             getIntEnv("ALIYUN_SMS_DUPLICATE_POLICY", 1),
 				SchemeName:                  getEnv("ALIYUN_SMS_SCHEME_NAME", ""),
+			},
+			IDCard: AliyunIDCardConfig{
+				Endpoint:  getEnv("ALIYUN_ID_CARD_ENDPOINT", "https://kzidcardv1.market.alicloudapi.com/api-mall/api/id_card/check"),
+				AppCode:   getEnv("ALIYUN_ID_CARD_APP_CODE", ""),
+				AppKey:    getEnv("ALIYUN_ID_CARD_APP_KEY", ""),
+				AppSecret: getEnv("ALIYUN_ID_CARD_APP_SECRET", ""),
 			},
 		},
 		Jiguang: JiguangConfig{

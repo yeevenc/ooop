@@ -21,6 +21,7 @@ type UserRepository interface {
 	UpdatePhone(ctx context.Context, id int64, phone string) error
 	UpdateProfile(ctx context.Context, id int64, update ProfileUpdate) error
 	UpdatePushRegistration(ctx context.Context, id int64, platform string, registrationID string) error
+	UpdateRealNameVerification(ctx context.Context, id int64, realName string, idCardMask string, verifiedAt time.Time) error
 	TouchLastLogin(ctx context.Context, id int64, loginAt time.Time, meta ClientMeta) error
 }
 
@@ -124,6 +125,16 @@ func (r *GormUserRepository) UpdatePushRegistration(ctx context.Context, id int6
 	updates := map[string]interface{}{
 		"push_platform":   normalizeMetaValue(platform),
 		"registration_id": normalizeMetaValue(registrationID),
+	}
+	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *GormUserRepository) UpdateRealNameVerification(ctx context.Context, id int64, realName string, idCardMask string, verifiedAt time.Time) error {
+	updates := map[string]interface{}{
+		"real_name":             realName,
+		"id_card_mask":          idCardMask,
+		"is_real_name_verified": true,
+		"real_name_verified_at": verifiedAt,
 	}
 	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(updates).Error
 }
