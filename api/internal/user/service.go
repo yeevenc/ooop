@@ -448,13 +448,6 @@ func (s *AuthService) VerifyRealName(ctx context.Context, userID int64, name str
 	if err != nil {
 		return PublicUser{}, err
 	}
-	if item.RealNameVerified {
-		stats, err := s.userStats(ctx, userID, false)
-		if err != nil {
-			return PublicUser{}, err
-		}
-		return ToPublicUserWithStats(item, stats), nil
-	}
 	if s.realNameVerifier == nil {
 		return PublicUser{}, errors.New("实名认证服务未配置")
 	}
@@ -472,7 +465,7 @@ func (s *AuthService) VerifyRealName(ctx context.Context, userID int64, name str
 	}
 
 	now := time.Now()
-	if err := s.users.UpdateRealNameVerification(ctx, userID, name, maskIDCard(idCard), now); err != nil {
+	if err := s.users.UpdateRealNameVerification(ctx, userID, name, maskIDCard(idCard), normalizeRealNameGender(result.Gender), now); err != nil {
 		return PublicUser{}, err
 	}
 	item, err = s.users.FindByID(ctx, userID)
@@ -687,6 +680,14 @@ func maskIDCard(value string) string {
 		return value
 	}
 	return value[:6] + "********" + value[len(value)-4:]
+}
+
+func normalizeRealNameGender(value string) string {
+	gender := strings.TrimSpace(value)
+	if utf8.RuneCountInString(gender) > 16 {
+		return ""
+	}
+	return gender
 }
 
 func randomCode() string {

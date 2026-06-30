@@ -177,6 +177,63 @@ func TestUpdateProfilePartiallyUpdatesFields(t *testing.T) {
 	}
 }
 
+func TestVerifyRealNameUpdatesGenderWhenPassed(t *testing.T) {
+	service := newTestAuthService()
+	service.realNameVerifier = fixedRealNameVerifier{
+		result: provider.RealNameVerifyResult{
+			Passed:  true,
+			Message: "一致",
+			Gender:  "男",
+		},
+	}
+	ctx := context.Background()
+
+	login, err := service.AliyunMobileLogin(ctx, "aliyun-token", ClientMeta{})
+	if err != nil {
+		t.Fatalf("AliyunMobileLogin() error = %v", err)
+	}
+
+	updated, err := service.VerifyRealName(ctx, login.User.ID, "张三", "11010119900307451X")
+	if err != nil {
+		t.Fatalf("VerifyRealName() error = %v", err)
+	}
+	if !updated.RealNameVerified {
+		t.Fatalf("RealNameVerified = false, want true")
+	}
+	if updated.Gender != "男" {
+		t.Fatalf("Gender = %q, want 男", updated.Gender)
+	}
+}
+
+func TestVerifyRealNameDoesNotSkipVerifierWhenAlreadyVerified(t *testing.T) {
+	service := newTestAuthService()
+	service.realNameVerifier = fixedRealNameVerifier{
+		result: provider.RealNameVerifyResult{
+			Passed: true,
+			Gender: "女",
+		},
+	}
+	ctx := context.Background()
+
+	login, err := service.AliyunMobileLogin(ctx, "aliyun-token", ClientMeta{})
+	if err != nil {
+		t.Fatalf("AliyunMobileLogin() error = %v", err)
+	}
+	if _, err := service.VerifyRealName(ctx, login.User.ID, "张三", "11010119900307451X"); err != nil {
+		t.Fatalf("VerifyRealName(first) error = %v", err)
+	}
+
+	service.realNameVerifier = fixedRealNameVerifier{
+		result: provider.RealNameVerifyResult{
+			Passed:  false,
+			Message: "身份证号不合法",
+		},
+	}
+	if _, err := service.VerifyRealName(ctx, login.User.ID, "张三", "11010119900307451X"); !errors.Is(err, ErrRealNameMismatch) {
+		t.Fatalf("VerifyRealName(second) error = %v, want ErrRealNameMismatch", err)
+	}
+}
+
 func TestListUsersReturnsPagedPublicUsers(t *testing.T) {
 	service := newTestAuthService()
 	ctx := context.Background()
@@ -238,6 +295,15 @@ type fixedMobileVerifier struct {
 
 func (v fixedMobileVerifier) Verify(ctx context.Context, accessToken string) (provider.MobileVerifyResult, error) {
 	return provider.MobileVerifyResult{Phone: v.phone}, nil
+}
+
+type fixedRealNameVerifier struct {
+	result provider.RealNameVerifyResult
+	err    error
+}
+
+func (v fixedRealNameVerifier) Verify(ctx context.Context, name string, idCard string) (provider.RealNameVerifyResult, error) {
+	return v.result, v.err
 }
 
 type noopSMSSender struct {
@@ -442,7 +508,7 @@ func (r *memoryUserRepository) UpdatePushRegistration(ctx context.Context, id in
 	return nil
 }
 
-func (r *memoryUserRepository) UpdateRealNameVerification(ctx context.Context, id int64, realName string, idCardMask string, verifiedAt time.Time) error {
+func (r *memoryUserRepository) UpdateRealNameVerification(ctx context.Context, id int64, realName string, idCardMask string, gender string, verifiedAt time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	item, ok := r.items[id]
@@ -453,6 +519,9 @@ func (r *memoryUserRepository) UpdateRealNameVerification(ctx context.Context, i
 	item.IDCardMask = idCardMask
 	item.RealNameVerified = true
 	item.RealNameVerifiedAt = &verifiedAt
+	if gender != "" {
+		item.Gender = gender
+	}
 	item.UpdatedAt = time.Now()
 	r.items[id] = item
 	return nil

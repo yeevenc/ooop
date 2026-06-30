@@ -16,6 +16,7 @@ func TestAliyunIDCardVerifierPassesOnlyWhenResultIsZero(t *testing.T) {
 		"code": 200,
 		"data": {
 			"result": 0,
+			"sex": "男",
 			"desc": "一致"
 		}
 	}`)
@@ -26,6 +27,9 @@ func TestAliyunIDCardVerifierPassesOnlyWhenResultIsZero(t *testing.T) {
 	}
 	if !result.Passed {
 		t.Fatalf("Passed = false, want true")
+	}
+	if result.Gender != "男" {
+		t.Fatalf("Gender = %q, want 男", result.Gender)
 	}
 }
 
@@ -54,9 +58,12 @@ func TestAliyunIDCardVerifierRejectsMismatchResult(t *testing.T) {
 
 func TestAliyunIDCardVerifierRejectsInvalidIDCardResponse(t *testing.T) {
 	verifier := newTestAliyunIDCardVerifier(t, `{
-		"msg": "请输入有效的身份证号码",
+		"msg": "身份证号不合法",
+		"success": true,
 		"code": 400,
-		"data": null
+		"data": {
+			"orderNo": "202606301224326819738"
+		}
 	}`)
 
 	result, err := verifier.Verify(context.Background(), "张三", "bad-id-card")
@@ -66,8 +73,8 @@ func TestAliyunIDCardVerifierRejectsInvalidIDCardResponse(t *testing.T) {
 	if result.Passed {
 		t.Fatalf("Passed = true, want false")
 	}
-	if result.Message != "请输入有效的身份证号码" {
-		t.Fatalf("Message = %q, want 请输入有效的身份证号码", result.Message)
+	if result.Message != "身份证号不合法" {
+		t.Fatalf("Message = %q, want 身份证号不合法", result.Message)
 	}
 }
 

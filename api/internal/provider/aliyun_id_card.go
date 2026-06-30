@@ -21,6 +21,7 @@ type RealNameVerifier interface {
 type RealNameVerifyResult struct {
 	Passed  bool
 	Message string
+	Gender  string
 }
 
 type AliyunIDCardVerifier struct {
@@ -78,6 +79,7 @@ func (v *AliyunIDCardVerifier) Verify(ctx context.Context, name string, idCard s
 	return RealNameVerifyResult{
 		Passed:  aliyunIDCardPassed(payload),
 		Message: message,
+		Gender:  aliyunIDCardGender(payload),
 	}, nil
 }
 
@@ -92,34 +94,6 @@ func aliyunIDCardPassed(payload map[string]interface{}) bool {
 		}
 		if result, ok := findNumberByDirectKey(data, "result"); ok {
 			return result == 0
-		}
-		desc := strings.TrimSpace(findTextByDirectKey(data, "desc"))
-		return desc == "一致"
-	}
-
-	if value, ok := findBoolByKeys(payload, "passed", "match", "matched"); ok && value {
-		return true
-	}
-
-	text := strings.ToLower(strings.TrimSpace(strings.Join([]string{
-		findTextByKeys(payload, "status", "result", "res", "state"),
-		findTextByKeys(payload, "msg", "message", "desc", "result_msg", "reason"),
-	}, " ")))
-
-	if text == "" {
-		return false
-	}
-
-	successTokens := []string{"200", "0", "00", "true", "pass", "passed", "match", "matched", "一致", "匹配", "认证成功", "核验成功"}
-	failTokens := []string{"false", "fail", "failed", "mismatch", "不一致", "不匹配", "失败", "错误"}
-	for _, token := range failTokens {
-		if strings.Contains(text, token) {
-			return false
-		}
-	}
-	for _, token := range successTokens {
-		if strings.Contains(text, token) {
-			return true
 		}
 	}
 	return false
@@ -138,6 +112,14 @@ func aliyunIDCardMessage(payload map[string]interface{}) string {
 		return text
 	}
 	return "实名认证未通过"
+}
+
+func aliyunIDCardGender(payload map[string]interface{}) string {
+	data, ok := findMapByDirectKey(payload, "data")
+	if !ok {
+		return ""
+	}
+	return findTextByDirectKey(data, "sex")
 }
 
 func findTextByKeys(value interface{}, keys ...string) string {
