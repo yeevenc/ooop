@@ -40,6 +40,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&user.LoginCode{},
 		&activity.ActivityCategory{},
 		&activity.Activity{},
+		&activity.ActivityFavorite{},
 		&activity.ActivityParticipant{},
 		&message.UserMessage{},
 		&feedback.Feedback{},

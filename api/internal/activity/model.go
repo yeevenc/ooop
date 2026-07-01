@@ -82,8 +82,17 @@ type PublicActivity struct {
 	Participants      []any           `json:"participants"`
 	ActionType        string          `json:"actionType"`
 	PendingCount      int             `json:"pendingCount"`
+	IsFavorited       bool            `json:"isFavorited"`
 	JoinInfo          *PublicJoinInfo `json:"joinInfo,omitempty"`
 	CreatedAt         time.Time       `json:"createdAt"`
+}
+
+// ActivityFavorite 活动收藏关系，独立记录用户与活动的收藏状态，避免污染活动主表。
+type ActivityFavorite struct {
+	ID         int64     `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID     int64     `gorm:"not null;uniqueIndex:uniq_activity_favorite;index" json:"user_id"`
+	ActivityID int64     `gorm:"not null;uniqueIndex:uniq_activity_favorite;index" json:"activity_id"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type ActivityCategory struct {

@@ -173,11 +173,17 @@ func (r *GormUserRepository) CancelAccount(ctx context.Context, id int64) error 
 			if err := tx.Exec("DELETE FROM activity_participants WHERE activity_id IN ?", activityIDs).Error; err != nil {
 				return err
 			}
+			if err := tx.Exec("DELETE FROM activity_favorites WHERE activity_id IN ?", activityIDs).Error; err != nil {
+				return err
+			}
 		}
 		if err := tx.Exec("DELETE FROM activities WHERE user_id = ?", id).Error; err != nil {
 			return err
 		}
 		if err := tx.Exec("DELETE FROM activity_participants WHERE user_id = ?", id).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM activity_favorites WHERE user_id = ?", id).Error; err != nil {
 			return err
 		}
 		if err := tx.Exec("DELETE FROM user_messages WHERE user_id = ?", id).Error; err != nil {

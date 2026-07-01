@@ -48,6 +48,10 @@ type Repository interface {
 	UpdateStatus(ctx context.Context, id int64, status string) error
 	AdjustCurrentCount(ctx context.Context, id int64, delta int) error
 	FindActivitiesByIDs(ctx context.Context, ids []int64) ([]Activity, error)
+	FindFavorite(ctx context.Context, userID, activityID int64) (ActivityFavorite, error)
+	CreateFavorite(ctx context.Context, item *ActivityFavorite) error
+	DeleteFavorite(ctx context.Context, userID, activityID int64) error
+	ListFavoritesByUser(ctx context.Context, userID int64, page, pageSize int) ([]ActivityFavorite, error)
 	// 参加(报名)关联：参加人↔活动 = (activity_id, user_id)
 	FindParticipant(ctx context.Context, activityID, userID int64) (ActivityParticipant, error)
 	CreateParticipant(ctx context.Context, item *ActivityParticipant) error
@@ -191,7 +195,49 @@ func (r *GormRepository) Save(ctx context.Context, item *Activity) error {
 }
 
 func (r *GormRepository) Delete(ctx context.Context, id int64) error {
-	return r.db.WithContext(ctx).Delete(&Activity{}, id).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("activity_id = ?", id).Delete(&ActivityFavorite{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&Activity{}, id).Error
+	})
+}
+
+func (r *GormRepository) FindFavorite(ctx context.Context, userID, activityID int64) (ActivityFavorite, error) {
+	var item ActivityFavorite
+	err := r.db.WithContext(ctx).
+		Where("user_id = ? AND activity_id = ?", userID, activityID).
+		First(&item).Error
+	return item, err
+}
+
+func (r *GormRepository) CreateFavorite(ctx context.Context, item *ActivityFavorite) error {
+	return r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "user_id"}, {Name: "activity_id"}},
+			DoNothing: true,
+		}).
+		Create(item).Error
+}
+
+func (r *GormRepository) DeleteFavorite(ctx context.Context, userID, activityID int64) error {
+	return r.db.WithContext(ctx).
+		Where("user_id = ? AND activity_id = ?", userID, activityID).
+		Delete(&ActivityFavorite{}).Error
+}
+
+func (r *GormRepository) ListFavoritesByUser(ctx context.Context, userID int64, page, pageSize int) ([]ActivityFavorite, error) {
+	var items []ActivityFavorite
+	err := paginate(
+		r.db.WithContext(ctx).
+			Model(&ActivityFavorite{}).
+			Where("user_id = ?", userID),
+		page,
+		pageSize,
+	).
+		Order("created_at DESC").
+		Find(&items).Error
+	return items, err
 }
 
 func (r *GormRepository) UpdateStatus(ctx context.Context, id int64, status string) error {

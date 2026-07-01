@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -49,10 +50,13 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	group.GET("", h.list)
 	group.GET("/:id", h.detail)
 	group.POST("", auth.Middleware(h.tokenManager), h.create)
+	group.PUT("/:id/favorite", auth.Middleware(h.tokenManager), h.favorite)
+	group.DELETE("/:id/favorite", auth.Middleware(h.tokenManager), h.unfavorite)
 
 	// 用户维度的发布活动：他人主页（公开，仅 ongoing）、我的主页（鉴权，含审核中）
 	api.GET("/users/:id/activities", h.userActivities)
 	api.GET("/user/activities", auth.Middleware(h.tokenManager), h.myActivities)
+	api.GET("/user/favorite-activities", auth.Middleware(h.tokenManager), h.myFavorites)
 
 	// 报名(参加)：报名 / 发起人查看 & 审核申请人
 	group.POST("/:id/join", auth.Middleware(h.tokenManager), h.join)
@@ -110,7 +114,36 @@ func (h *Handler) detail(c *gin.Context) {
 		httpx.Fail(c, http.StatusBadRequest, 400001, "活动 ID 格式不正确")
 		return
 	}
-	result, err := h.service.GetPublicActivityByID(c.Request.Context(), id)
+	userID := h.optionalUserID(c)
+	result, err := h.service.GetPublicActivityByIDForUser(c.Request.Context(), id, userID)
+	writeResult(c, result, err)
+}
+
+func (h *Handler) favorite(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	result, err := h.service.FavoriteActivity(c.Request.Context(), userID, id)
+	writeResult(c, result, err)
+}
+
+func (h *Handler) unfavorite(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	result, err := h.service.UnfavoriteActivity(c.Request.Context(), userID, id)
 	writeResult(c, result, err)
 }
 
@@ -140,6 +173,19 @@ func (h *Handler) myActivities(c *gin.Context) {
 		return
 	}
 	result, err := h.service.ListMyActivities(
+		c.Request.Context(), userID, queryInt(c, "page", 1), queryInt(c, "page_size", 20),
+	)
+	writeResult(c, result, err)
+}
+
+// myFavorites 当前登录用户收藏的活动，数据来源为 activity_favorites 独立表。
+func (h *Handler) myFavorites(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+	result, err := h.service.ListMyFavoriteActivities(
 		c.Request.Context(), userID, queryInt(c, "page", 1), queryInt(c, "page_size", 20),
 	)
 	writeResult(c, result, err)
@@ -365,6 +411,19 @@ func queryInt(c *gin.Context, key string, fallback int) int {
 		return fallback
 	}
 	return result
+}
+
+func (h *Handler) optionalUserID(c *gin.Context) int64 {
+	header := c.GetHeader("Authorization")
+	token := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+	if token == "" || token == header {
+		return 0
+	}
+	claims, err := h.tokenManager.Parse(token, auth.TokenTypeAccess)
+	if err != nil {
+		return 0
+	}
+	return claims.UserID
 }
 
 func queryFloat(c *gin.Context, key string) (float64, bool) {

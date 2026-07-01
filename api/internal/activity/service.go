@@ -28,6 +28,7 @@ var (
 	ErrInvalidStatus   = errors.New("状态不合法")
 	ErrCategoryExists  = errors.New("分类标识已存在")
 	ErrCategoryMissing = errors.New("分类不存在")
+	ErrAlreadyFavorite = errors.New("已收藏该活动")
 
 	// 报名(参加)相关
 	ErrAlreadyJoined       = errors.New("你已报名，请勿重复报名")
@@ -272,6 +273,17 @@ func (s *Service) GetActivityByID(ctx context.Context, id int64) (PublicActivity
 	return s.toPublic(ctx, item), nil
 }
 
+func (s *Service) GetPublicActivityByIDForUser(ctx context.Context, id int64, userID int64) (PublicActivity, error) {
+	pub, err := s.GetPublicActivityByID(ctx, id)
+	if err != nil {
+		return PublicActivity{}, err
+	}
+	if userID > 0 {
+		pub.IsFavorited = s.isFavorited(ctx, userID, id)
+	}
+	return pub, nil
+}
+
 // GetPublicActivityByID 返回 App 端可见（已审核通过 ongoing）的活动详情。
 // 待审核/已拒绝/已下架的活动一律按「不存在」处理，避免未过审内容被 App 直接访问。
 func (s *Service) GetPublicActivityByID(ctx context.Context, id int64) (PublicActivity, error) {
@@ -291,6 +303,83 @@ func (s *Service) GetPublicActivityByID(ctx context.Context, id int64) (PublicAc
 // ListPublicUserActivities 返回某用户对外可见（ongoing）的发布活动，用于「他人主页」。
 func (s *Service) ListPublicUserActivities(ctx context.Context, userID int64, page, pageSize int) ([]PublicActivity, error) {
 	return s.listUserActivities(ctx, userID, page, pageSize, []string{StatusOngoing})
+}
+
+func (s *Service) FavoriteActivity(ctx context.Context, userID, activityID int64) (PublicActivity, error) {
+	item, err := s.findActivity(ctx, activityID)
+	if err != nil {
+		return PublicActivity{}, err
+	}
+	if item.Status != StatusOngoing {
+		return PublicActivity{}, ErrNotFound
+	}
+	if _, err := s.users.FindByID(ctx, userID); err != nil {
+		return PublicActivity{}, err
+	}
+	if _, err := s.activities.FindFavorite(ctx, userID, activityID); err == nil {
+		pub := s.toPublic(ctx, item)
+		pub.IsFavorited = true
+		return pub, nil
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return PublicActivity{}, err
+	}
+	if err := s.activities.CreateFavorite(ctx, &ActivityFavorite{
+		UserID:     userID,
+		ActivityID: activityID,
+	}); err != nil {
+		return PublicActivity{}, err
+	}
+	pub := s.toPublic(ctx, item)
+	pub.IsFavorited = true
+	return pub, nil
+}
+
+func (s *Service) UnfavoriteActivity(ctx context.Context, userID, activityID int64) (PublicActivity, error) {
+	item, err := s.findActivity(ctx, activityID)
+	if err != nil {
+		return PublicActivity{}, err
+	}
+	if err := s.activities.DeleteFavorite(ctx, userID, activityID); err != nil {
+		return PublicActivity{}, err
+	}
+	pub := s.toPublic(ctx, item)
+	pub.IsFavorited = false
+	return pub, nil
+}
+
+func (s *Service) ListMyFavoriteActivities(ctx context.Context, userID int64, page, pageSize int) ([]PublicActivity, error) {
+	favorites, err := s.activities.ListFavoritesByUser(ctx, userID, page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]int64, 0, len(favorites))
+	for _, item := range favorites {
+		ids = append(ids, item.ActivityID)
+	}
+	if len(ids) == 0 {
+		return []PublicActivity{}, nil
+	}
+
+	activities, err := s.activities.FindActivitiesByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	activityByID := make(map[int64]Activity, len(activities))
+	for _, item := range activities {
+		activityByID[item.ID] = item
+	}
+
+	list := make([]PublicActivity, 0, len(favorites))
+	for _, favorite := range favorites {
+		item, ok := activityByID[favorite.ActivityID]
+		if !ok || item.Status != StatusOngoing {
+			continue
+		}
+		pub := s.toPublic(ctx, item)
+		pub.IsFavorited = true
+		list = append(list, pub)
+	}
+	return list, nil
 }
 
 // ListMyActivities 返回当前登录用户自己的发布活动（含审核中 pending），用于「我的主页」。
@@ -588,6 +677,14 @@ func toPublicJoinInfo(item ActivityParticipant) *PublicJoinInfo {
 		EntryCode:    item.EntryCode,
 		ApplyTime:    relativeTime(item.CreatedAt),
 	}
+}
+
+func (s *Service) isFavorited(ctx context.Context, userID, activityID int64) bool {
+	if userID <= 0 || activityID <= 0 {
+		return false
+	}
+	_, err := s.activities.FindFavorite(ctx, userID, activityID)
+	return err == nil
 }
 
 func hasActivityStarted(item Activity) bool {
