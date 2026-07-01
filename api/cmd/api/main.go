@@ -13,6 +13,7 @@ import (
 	"ooop-admin-api/internal/database"
 	"ooop-admin-api/internal/feedback"
 	"ooop-admin-api/internal/httpx"
+	"ooop-admin-api/internal/legal"
 	"ooop-admin-api/internal/logger"
 	"ooop-admin-api/internal/message"
 	"ooop-admin-api/internal/provider"
@@ -93,6 +94,7 @@ func main() {
 		httpx.OK(c, gin.H{"status": "ok"})
 	})
 	router.Static("/uploads", "./uploads")
+	legal.NewHandler().Register(router)
 
 	api := router.Group("/api/v1")
 	user.NewHandler(authService, tokenManager).Register(api)

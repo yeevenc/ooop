@@ -18,7 +18,7 @@ const (
 	// admin 是后台默认账号，禁止进入 App 用户体系。
 	ReservedAdminUsername = "admin"
 
-	DefaultAvatarPath = "/uploads/defaults/default_avatar.png"
+	DefaultAvatarPath = "https://source.ooopai.cn/images/2026/07/01/1782874557697870301.png"
 )
 
 type User struct {
