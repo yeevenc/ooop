@@ -1,7 +1,6 @@
 package user
 
 import (
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -174,11 +173,7 @@ func AvatarURL(value string) string {
 }
 
 func DefaultAvatarURL() string {
-	baseURL := strings.TrimRight(strings.TrimSpace(os.Getenv("APP_PUBLIC_BASE_URL")), "/")
-	if baseURL == "" {
-		return DefaultAvatarPath
-	}
-	return baseURL + DefaultAvatarPath
+	return DefaultAvatarPath
 }
 
 func stringValue(value *string) string {

@@ -20,7 +20,9 @@ func NewHandler() *Handler {
 
 func (h *Handler) Register(router *gin.Engine) {
 	router.GET("/user-agreement", h.userAgreement)
+	router.HEAD("/user-agreement", h.userAgreementHead)
 	router.GET("/privacy-policy", h.privacyPolicy)
+	router.HEAD("/privacy-policy", h.privacyPolicyHead)
 }
 
 func (h *Handler) userAgreement(c *gin.Context) {
@@ -29,6 +31,19 @@ func (h *Handler) userAgreement(c *gin.Context) {
 
 func (h *Handler) privacyPolicy(c *gin.Context) {
 	renderAgreement(c, "隐私政策", PrivacyPolicy)
+}
+
+func (h *Handler) userAgreementHead(c *gin.Context) {
+	writeAgreementHead(c)
+}
+
+func (h *Handler) privacyPolicyHead(c *gin.Context) {
+	writeAgreementHead(c)
+}
+
+func writeAgreementHead(c *gin.Context) {
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.Status(http.StatusOK)
 }
 
 func renderAgreement(c *gin.Context, title string, content string) {
