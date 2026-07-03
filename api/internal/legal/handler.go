@@ -21,8 +21,12 @@ func NewHandler() *Handler {
 func (h *Handler) Register(router *gin.Engine) {
 	router.GET("/user-agreement", h.userAgreement)
 	router.HEAD("/user-agreement", h.userAgreementHead)
+	router.GET("/legal/user-agreement.html", h.userAgreement)
+	router.HEAD("/legal/user-agreement.html", h.userAgreementHead)
 	router.GET("/privacy-policy", h.privacyPolicy)
 	router.HEAD("/privacy-policy", h.privacyPolicyHead)
+	router.GET("/legal/privacy-policy.html", h.privacyPolicy)
+	router.HEAD("/legal/privacy-policy.html", h.privacyPolicyHead)
 }
 
 func (h *Handler) userAgreement(c *gin.Context) {
