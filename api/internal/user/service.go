@@ -231,7 +231,6 @@ func (s *AuthService) RegisterByPassword(ctx context.Context, phone string, user
 
 	item := User{
 		Phone:          phone,
-		Nickname:       username,
 		Status:         UserStatusEnabled,
 		RegisterSource: RegisterSourcePassword,
 		PasswordHash:   passwordHash,
@@ -243,6 +242,9 @@ func (s *AuthService) RegisterByPassword(ctx context.Context, phone string, user
 	}
 
 	if err := s.users.Create(ctx, &item); err != nil {
+		return LoginResult{}, err
+	}
+	if err := s.applyDefaultNickname(ctx, &item); err != nil {
 		return LoginResult{}, err
 	}
 	return s.issueLoginResult(ctx, item, meta)
@@ -532,8 +534,28 @@ func (s *AuthService) loginOrCreateByPhone(ctx context.Context, phone string, so
 		if err := s.users.Create(ctx, &item); err != nil {
 			return LoginResult{}, err
 		}
+		if err := s.applyDefaultNickname(ctx, &item); err != nil {
+			return LoginResult{}, err
+		}
 	}
 	return s.issueLoginResult(ctx, item, meta)
+}
+
+func (s *AuthService) applyDefaultNickname(ctx context.Context, item *User) error {
+	if item == nil || item.ID <= 0 || strings.TrimSpace(item.Nickname) != "" {
+		return nil
+	}
+
+	nickname := defaultNickname(item.ID)
+	if err := s.users.UpdateProfile(ctx, item.ID, ProfileUpdate{Nickname: &nickname}); err != nil {
+		return err
+	}
+	item.Nickname = nickname
+	return nil
+}
+
+func defaultNickname(userID int64) string {
+	return fmt.Sprintf("Ooop%d", userID)
 }
 
 func (s *AuthService) issueLoginResult(ctx context.Context, item User, meta ClientMeta) (LoginResult, error) {

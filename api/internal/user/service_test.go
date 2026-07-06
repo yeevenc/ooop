@@ -27,6 +27,9 @@ func TestAliyunMobileLoginCreatesUserAndReturnsTokens(t *testing.T) {
 	if result.User.RegisterSource != RegisterSourceAliyunMobile {
 		t.Fatalf("register source = %s", result.User.RegisterSource)
 	}
+	if result.User.Nickname != "Ooop1" {
+		t.Fatalf("nickname = %s, want Ooop1", result.User.Nickname)
+	}
 	if result.Tokens.AccessToken == "" {
 		t.Fatalf("access token should not be empty")
 	}
@@ -100,8 +103,8 @@ func TestRegisterByPasswordCreatesUserAndRejectsDuplicatePhone(t *testing.T) {
 	if result.User.RegisterSource != RegisterSourcePassword {
 		t.Fatalf("register source = %s, want %s", result.User.RegisterSource, RegisterSourcePassword)
 	}
-	if result.User.Nickname != "new_user" || result.User.Platform != "android" {
-		t.Fatalf("profile = %s/%s, want new_user/android", result.User.Nickname, result.User.Platform)
+	if result.User.Nickname != "Ooop1" || result.User.Platform != "android" {
+		t.Fatalf("profile = %s/%s, want Ooop1/android", result.User.Nickname, result.User.Platform)
 	}
 
 	if _, err := service.RegisterByPassword(ctx, "13700137000", "other_user", "password123", ClientMeta{}); !errors.Is(err, ErrPhoneExists) {
