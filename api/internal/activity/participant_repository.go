@@ -75,7 +75,7 @@ func (r *GormRepository) ListParticipantsByUser(ctx context.Context, userID int6
 	return items, err
 }
 
-// CountByActivityIDsAndStatus 批量统计多个活动在指定状态下的报名条数（用于「我的发布」待审核人数）。
+// CountByActivityIDsAndStatus 批量统计多个活动在指定状态下的报名用户数（用于「我的发布」待审核人数）。
 func (r *GormRepository) CountByActivityIDsAndStatus(ctx context.Context, ids []int64, status string) (map[int64]int, error) {
 	result := make(map[int64]int)
 	if len(ids) == 0 {
@@ -89,7 +89,7 @@ func (r *GormRepository) CountByActivityIDsAndStatus(ctx context.Context, ids []
 	var rows []row
 	err := r.db.WithContext(ctx).
 		Model(&ActivityParticipant{}).
-		Select("activity_id, COALESCE(SUM(count), 0) AS total").
+		Select("activity_id, COUNT(*) AS total").
 		Where("activity_id IN ? AND status = ?", ids, status).
 		Group("activity_id").
 		Scan(&rows).Error

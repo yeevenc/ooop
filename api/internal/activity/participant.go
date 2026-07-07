@@ -22,6 +22,7 @@ type ActivityParticipant struct {
 	UserID       int64  `gorm:"not null;uniqueIndex:uniq_activity_user;index" json:"user_id"`
 	Count        int    `gorm:"not null;default:1" json:"count"` // 报名人数（本人 + 同行）
 	Remark       string `gorm:"size:255;not null;default:''" json:"remark"`
+	ContactInfo  string `gorm:"size:64;not null;default:''" json:"contact_info"` // 线下联系用的报名联系方式
 	RejectReason string `gorm:"size:255;not null;default:''" json:"reject_reason"`
 	// EntryCode 参加编号（数字+字母）：审核「通过」时一次性生成，仅已通过的报名才有，用于线下核对参加身份。
 	EntryCode string    `gorm:"size:16;not null;default:''" json:"entry_code"`

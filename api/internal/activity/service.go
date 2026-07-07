@@ -39,6 +39,7 @@ var (
 	ErrParticipantNotFound = errors.New("报名记录不存在")
 	ErrRejectReasonMissing = errors.New("请填写拒绝原因")
 	ErrActivityStarted     = errors.New("活动已开始，不能进行该操作")
+	ErrInvalidContactInfo  = errors.New("请填写联系方式")
 )
 
 // 详情页「已报名成员」头像最多展示数量。
@@ -62,6 +63,7 @@ type PublicApplicant struct {
 	Name         string `json:"name"`
 	Gender       string `json:"gender"`
 	Phone        string `json:"phone"`
+	ContactInfo  string `json:"contactInfo"`
 	Avatar       string `json:"avatar"`
 	AvatarColor  string `json:"avatarColor"`
 	ApplyTime    string `json:"applyTime"`    // 相对时间，如 "2小时前"
@@ -432,9 +434,16 @@ func (s *Service) listUserActivities(ctx context.Context, userID int64, page, pa
 
 // JoinActivity 报名参加活动：生成 joined（待发起人审核）记录，不立即计入正式人数。
 // 校验：活动可见(ongoing)、非本人发起、尚有空位、未重复报名（已拒绝/取消的可重新报名）。
-func (s *Service) JoinActivity(ctx context.Context, userID, activityID int64, count int, remark string) error {
+func (s *Service) JoinActivity(ctx context.Context, userID, activityID int64, count int, remark string, contactInfo string) error {
 	if count < 1 {
 		count = 1
+	}
+	contactInfo = strings.TrimSpace(contactInfo)
+	if contactInfo == "" {
+		return ErrInvalidContactInfo
+	}
+	if len([]rune(contactInfo)) > 64 {
+		contactInfo = string([]rune(contactInfo)[:64])
 	}
 
 	item, err := s.findActivity(ctx, activityID)
@@ -460,6 +469,7 @@ func (s *Service) JoinActivity(ctx context.Context, userID, activityID int64, co
 		}
 		existing.Count = count
 		existing.Remark = remark
+		existing.ContactInfo = contactInfo
 		existing.RejectReason = ""
 		existing.Status = ParticipantStatusJoined
 		if err := s.activities.SaveParticipant(ctx, &existing); err != nil {
@@ -477,6 +487,7 @@ func (s *Service) JoinActivity(ctx context.Context, userID, activityID int64, co
 		UserID:       userID,
 		Count:        count,
 		Remark:       remark,
+		ContactInfo:  contactInfo,
 		RejectReason: "",
 		Status:       ParticipantStatusJoined,
 	}); err != nil {
@@ -538,12 +549,14 @@ func (s *Service) ListApplicants(ctx context.Context, organizerID, activityID in
 	list := make([]PublicApplicant, 0, len(parts))
 	for _, p := range parts {
 		u := users[p.UserID]
+		contactInfo := defaultText(p.ContactInfo, u.Phone)
 		list = append(list, PublicApplicant{
 			ID:           strconv.FormatInt(p.ID, 10),
 			UserID:       strconv.FormatInt(p.UserID, 10),
 			Name:         displayName(u, p.UserID),
 			Gender:       u.Gender,
-			Phone:        u.Phone,
+			Phone:        contactInfo,
+			ContactInfo:  contactInfo,
 			Avatar:       user.AvatarURL(u.Avatar),
 			AvatarColor:  "#8fa061",
 			ApplyTime:    relativeTime(p.CreatedAt),
