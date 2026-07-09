@@ -71,7 +71,7 @@ func main() {
 	})
 	adminService := admin.NewService(adminRepo, passwordHasher, adminTokenManager)
 	activityService := activity.NewService(activityRepo, userRepo)
-	messageService := message.NewService(messageRepo, jpushPusher)
+	messageService := message.NewService(messageRepo, jpushPusher, userRepo)
 	feedbackService := feedback.NewService(feedbackRepo, authService)
 	activityService.SetReviewNotifier(messageService)
 	// 后台账号独立写入 admin_users，不再污染 APP 用户表。

@@ -272,7 +272,80 @@ avatar：图片 URL，最长 255 字符；由「上传图片」接口返回
 
 返回更新后的完整用户信息，结构同「获取当前用户信息」。
 
-## 9. 上传图片
+## 9. 获取隐私和通知设置
+
+```http
+GET /user/settings
+Authorization: Bearer <access_token>
+```
+
+返回：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "privacy": {
+      "show_region": true
+    },
+    "notification": {
+      "notification_permission_enabled": true,
+      "activity_reminder_enabled": true,
+      "system_message_enabled": true
+    }
+  }
+}
+```
+
+字段说明：
+
+```text
+show_region：是否在他人查看个人主页时展示常驻地区
+notification_permission_enabled：APP 同步的手机系统通知权限状态
+activity_reminder_enabled：活动提醒开关展示状态，跟随系统通知权限
+system_message_enabled：系统消息开关展示状态，跟随系统通知权限
+```
+
+通知管理页面只展示「活动提醒」和「系统消息」，不再展示「互动通知」。用户点击活动提醒或系统消息开关时，APP 端弹窗提示用户前往手机系统设置开启或关闭通知权限；权限状态变化后，再调用通知设置接口同步最新系统权限。
+
+## 10. 修改隐私设置
+
+```http
+PUT /user/privacy-settings
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+请求参数：
+
+```json
+{
+  "show_region": false
+}
+```
+
+返回更新后的设置结构，结构同「获取隐私和通知设置」。当 `show_region` 为 `false` 时，他人查看该用户个人主页不返回地区。
+
+## 11. 同步通知设置
+
+```http
+PUT /user/notification-settings
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+请求参数：
+
+```json
+{
+  "notification_permission_enabled": true
+}
+```
+
+返回更新后的设置结构，结构同「获取隐私和通知设置」。该接口用于 APP 端同步手机系统通知权限状态，不直接代替系统权限开关。
+
+## 12. 上传图片
 
 用于头像等图片上传，后端会上传到七牛云 `ooop` 空间并返回可公开访问的 CDN URL。
 
@@ -312,6 +385,8 @@ username：账号名，唯一，可为空
 password_hash：密码哈希，接口不返回
 status：用户状态，1 表示启用
 register_source：注册来源，aliyun_mobile / mobile_code / password
+hide_region：是否隐藏常驻地区，0 表示展示，1 表示隐藏
+notification_disabled：是否关闭手机系统通知权限，0 表示开启，1 表示关闭
 last_login_at：最后登录时间
 created_at：创建时间
 updated_at：更新时间

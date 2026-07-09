@@ -180,6 +180,57 @@ func TestUpdateProfilePartiallyUpdatesFields(t *testing.T) {
 	}
 }
 
+func TestPublicProfileHidesRegionWhenPrivacyDisabled(t *testing.T) {
+	service := newTestAuthService()
+	ctx := context.Background()
+
+	login, err := service.AliyunMobileLogin(ctx, "aliyun-token", ClientMeta{})
+	if err != nil {
+		t.Fatalf("AliyunMobileLogin() error = %v", err)
+	}
+
+	region := "上海"
+	if _, err := service.UpdateProfile(ctx, login.User.ID, ProfileUpdate{Region: &region}); err != nil {
+		t.Fatalf("UpdateProfile(region) error = %v", err)
+	}
+
+	showRegion := false
+	if _, err := service.UpdatePrivacySettings(ctx, login.User.ID, PrivacySettingsUpdate{ShowRegion: &showRegion}); err != nil {
+		t.Fatalf("UpdatePrivacySettings() error = %v", err)
+	}
+
+	profile, err := service.PublicProfile(ctx, login.User.ID)
+	if err != nil {
+		t.Fatalf("PublicProfile() error = %v", err)
+	}
+	if profile.Region != "" {
+		t.Fatalf("Region = %q, want empty", profile.Region)
+	}
+}
+
+func TestNotificationSettingsFollowSystemPermission(t *testing.T) {
+	service := newTestAuthService()
+	ctx := context.Background()
+
+	login, err := service.AliyunMobileLogin(ctx, "aliyun-token", ClientMeta{})
+	if err != nil {
+		t.Fatalf("AliyunMobileLogin() error = %v", err)
+	}
+
+	permissionEnabled := false
+	settings, err := service.UpdateNotificationSettings(ctx, login.User.ID, NotificationSettingsUpdate{
+		NotificationPermissionEnabled: &permissionEnabled,
+	})
+	if err != nil {
+		t.Fatalf("UpdateNotificationSettings() error = %v", err)
+	}
+	if settings.Notification.NotificationPermissionEnabled ||
+		settings.Notification.ActivityReminderEnabled ||
+		settings.Notification.SystemMessageEnabled {
+		t.Fatalf("notification settings = %+v, want all disabled", settings.Notification)
+	}
+}
+
 func TestVerifyRealNameUpdatesGenderWhenPassed(t *testing.T) {
 	service := newTestAuthService()
 	service.realNameVerifier = fixedRealNameVerifier{
@@ -515,6 +566,36 @@ func (r *memoryUserRepository) UpdateProfile(ctx context.Context, id int64, upda
 	}
 	if update.Avatar != nil {
 		item.Avatar = *update.Avatar
+	}
+	item.UpdatedAt = time.Now()
+	r.items[id] = item
+	return nil
+}
+
+func (r *memoryUserRepository) UpdatePrivacySettings(ctx context.Context, id int64, update PrivacySettingsUpdate) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item, ok := r.items[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if update.ShowRegion != nil {
+		item.HideRegion = !*update.ShowRegion
+	}
+	item.UpdatedAt = time.Now()
+	r.items[id] = item
+	return nil
+}
+
+func (r *memoryUserRepository) UpdateNotificationSettings(ctx context.Context, id int64, update NotificationSettingsUpdate) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item, ok := r.items[id]
+	if !ok {
+		return ErrNotFound
+	}
+	if update.NotificationPermissionEnabled != nil {
+		item.NotificationDisabled = !*update.NotificationPermissionEnabled
 	}
 	item.UpdatedAt = time.Now()
 	r.items[id] = item

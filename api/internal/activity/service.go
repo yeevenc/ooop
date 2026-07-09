@@ -745,14 +745,12 @@ func (s *Service) usersByParticipants(ctx context.Context, parts []ActivityParti
 	return m
 }
 
-// displayName 取用户展示名：昵称 → 用户名 → 手机号 → 兜底「用户<id>」。
+// displayName 取用户展示名：昵称 → 用户名 → 兜底「用户<id>」。
+// 用户名场景不能兜底手机号，避免在报名审核和消息通知中暴露手机号。
 func displayName(u user.User, fallbackID int64) string {
 	name := u.Nickname
 	if name == "" && u.Username != nil {
 		name = *u.Username
-	}
-	if name == "" {
-		name = u.Phone
 	}
 	if name == "" {
 		name = "用户" + strconv.FormatInt(fallbackID, 10)

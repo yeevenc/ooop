@@ -37,6 +37,9 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	userGroup.Use(auth.Middleware(h.tokenManager))
 	userGroup.GET("/profile", h.profile)
 	userGroup.PUT("/profile", h.updateProfile)
+	userGroup.GET("/settings", h.settings)
+	userGroup.PUT("/privacy-settings", h.updatePrivacySettings)
+	userGroup.PUT("/notification-settings", h.updateNotificationSettings)
 	userGroup.PUT("/phone", h.changePhone)
 	userGroup.PUT("/push-registration", h.bindPushRegistration)
 	userGroup.POST("/real-name-verify", h.realNameVerify)
@@ -196,6 +199,44 @@ func (h *Handler) updateProfile(c *gin.Context) {
 		return
 	}
 	result, err := h.service.UpdateProfile(c.Request.Context(), userID, req.ToProfileUpdate())
+	writeServiceResult(c, result, err)
+}
+
+func (h *Handler) settings(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+	result, err := h.service.Settings(c.Request.Context(), userID)
+	writeServiceResult(c, result, err)
+}
+
+func (h *Handler) updatePrivacySettings(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+	var req PrivacySettingsUpdateInput
+	if !bindJSON(c, &req) {
+		return
+	}
+	result, err := h.service.UpdatePrivacySettings(c.Request.Context(), userID, req.ToPrivacySettingsUpdate())
+	writeServiceResult(c, result, err)
+}
+
+func (h *Handler) updateNotificationSettings(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+	var req NotificationSettingsUpdateInput
+	if !bindJSON(c, &req) {
+		return
+	}
+	result, err := h.service.UpdateNotificationSettings(c.Request.Context(), userID, req.ToNotificationSettingsUpdate())
 	writeServiceResult(c, result, err)
 }
 

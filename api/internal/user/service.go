@@ -81,6 +81,11 @@ type UserListResult struct {
 	PageSize int          `json:"page_size"`
 }
 
+type UserSettings struct {
+	Privacy      PrivacySettings      `json:"privacy"`
+	Notification NotificationSettings `json:"notification"`
+}
+
 type UserStatsRepository interface {
 	CountPublishedByUser(ctx context.Context, userID int64, statuses []string) (int64, error)
 	CountJoinedByUser(ctx context.Context, userID int64, statuses []string) (int64, error)
@@ -111,6 +116,30 @@ type ProfileUpdateInput struct {
 
 func (i ProfileUpdateInput) ToProfileUpdate() ProfileUpdate {
 	return ProfileUpdate(i)
+}
+
+type PrivacySettingsUpdate struct {
+	ShowRegion *bool
+}
+
+type PrivacySettingsUpdateInput struct {
+	ShowRegion *bool `json:"show_region"`
+}
+
+func (i PrivacySettingsUpdateInput) ToPrivacySettingsUpdate() PrivacySettingsUpdate {
+	return PrivacySettingsUpdate(i)
+}
+
+type NotificationSettingsUpdate struct {
+	NotificationPermissionEnabled *bool
+}
+
+type NotificationSettingsUpdateInput struct {
+	NotificationPermissionEnabled *bool `json:"notification_permission_enabled"`
+}
+
+func (i NotificationSettingsUpdateInput) ToNotificationSettingsUpdate() NotificationSettingsUpdate {
+	return NotificationSettingsUpdate(i)
 }
 
 func NewAuthService(opts AuthServiceOptions) *AuthService {
@@ -413,6 +442,36 @@ func (s *AuthService) UpdateProfile(ctx context.Context, userID int64, update Pr
 	return ToPublicUserWithStats(item, stats), nil
 }
 
+func (s *AuthService) Settings(ctx context.Context, userID int64) (UserSettings, error) {
+	item, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return UserSettings{}, err
+	}
+	return userSettings(item), nil
+}
+
+func (s *AuthService) UpdatePrivacySettings(ctx context.Context, userID int64, update PrivacySettingsUpdate) (UserSettings, error) {
+	if err := s.users.UpdatePrivacySettings(ctx, userID, update); err != nil {
+		return UserSettings{}, err
+	}
+	item, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return UserSettings{}, err
+	}
+	return userSettings(item), nil
+}
+
+func (s *AuthService) UpdateNotificationSettings(ctx context.Context, userID int64, update NotificationSettingsUpdate) (UserSettings, error) {
+	if err := s.users.UpdateNotificationSettings(ctx, userID, update); err != nil {
+		return UserSettings{}, err
+	}
+	item, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return UserSettings{}, err
+	}
+	return userSettings(item), nil
+}
+
 func (s *AuthService) BindPushRegistration(ctx context.Context, userID int64, platform string, registrationID string) error {
 	registrationID = strings.TrimSpace(registrationID)
 	platform = normalizeMetaValue(platform)
@@ -688,6 +747,29 @@ func profileUpdateColumns(update ProfileUpdate) map[string]interface{} {
 		columns["avatar"] = *update.Avatar
 	}
 	return columns
+}
+
+func privacySettingsUpdateColumns(update PrivacySettingsUpdate) map[string]interface{} {
+	columns := map[string]interface{}{}
+	if update.ShowRegion != nil {
+		columns["hide_region"] = !*update.ShowRegion
+	}
+	return columns
+}
+
+func notificationSettingsUpdateColumns(update NotificationSettingsUpdate) map[string]interface{} {
+	columns := map[string]interface{}{}
+	if update.NotificationPermissionEnabled != nil {
+		columns["notification_disabled"] = !*update.NotificationPermissionEnabled
+	}
+	return columns
+}
+
+func userSettings(item User) UserSettings {
+	return UserSettings{
+		Privacy:      ToPrivacySettings(item),
+		Notification: ToNotificationSettings(item),
+	}
 }
 
 func isReservedUsername(username string) bool {

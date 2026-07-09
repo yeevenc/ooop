@@ -10,6 +10,7 @@ import (
 
 	"ooop-admin-api/internal/logger"
 	"ooop-admin-api/internal/provider"
+	"ooop-admin-api/internal/user"
 )
 
 var ErrNotFound = errors.New("消息不存在")
@@ -17,16 +18,18 @@ var ErrNotFound = errors.New("消息不存在")
 type Service struct {
 	messages Repository
 	pusher   PushSender
+	users    user.UserRepository
 }
 
 type PushSender interface {
 	Push(ctx context.Context, payload provider.JiguangPushPayload) (provider.JiguangPushResult, error)
 }
 
-func NewService(messages Repository, pusher PushSender) *Service {
+func NewService(messages Repository, pusher PushSender, users user.UserRepository) *Service {
 	return &Service{
 		messages: messages,
 		pusher:   pusher,
+		users:    users,
 	}
 }
 
@@ -47,7 +50,7 @@ func (s *Service) CreateActivityReviewMessage(ctx context.Context, userID int64,
 		return provider.JiguangPushResult{}, err
 	}
 
-	return s.pushToUser(ctx, userID, title, content, activityID)
+	return s.pushToUser(ctx, userID, TypeActivityReview, title, content, activityID)
 }
 
 func (s *Service) CreateActivityRegistrationMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, applicantName string) (provider.JiguangPushResult, error) {
@@ -67,7 +70,7 @@ func (s *Service) CreateActivityRegistrationMessage(ctx context.Context, userID 
 		return provider.JiguangPushResult{}, err
 	}
 
-	return s.pushToUser(ctx, userID, title, content, activityID)
+	return s.pushToUser(ctx, userID, TypeRegistration, title, content, activityID)
 }
 
 func (s *Service) ListUserMessages(ctx context.Context, userID int64, page int, pageSize int) ([]PublicMessage, error) {
@@ -107,18 +110,32 @@ func formatID(id int64) string {
 	return strconv.FormatInt(id, 10)
 }
 
-func (s *Service) pushToUser(ctx context.Context, userID int64, title string, content string, activityID int64) (provider.JiguangPushResult, error) {
+func (s *Service) pushToUser(ctx context.Context, userID int64, messageType string, title string, content string, activityID int64) (provider.JiguangPushResult, error) {
+	alias := strconv.FormatInt(userID, 10)
+	allowed, err := s.allowsPush(ctx, userID, messageType)
+	if err != nil {
+		return provider.JiguangPushResult{}, err
+	}
+	if !allowed {
+		logger.Infof("极光推送跳过: 用户通知权限关闭, user_id=%d, activity_id=%d, type=%s", userID, activityID, messageType)
+		return provider.JiguangPushResult{
+			Triggered: false,
+			Success:   false,
+			Alias:     alias,
+			Message:   "用户通知权限关闭",
+		}, nil
+	}
+
 	if s.pusher == nil {
 		logger.Warnf("极光推送跳过: pusher 未初始化, user_id=%d, activity_id=%d", userID, activityID)
 		return provider.JiguangPushResult{
 			Triggered: false,
 			Success:   false,
-			Alias:     strconv.FormatInt(userID, 10),
+			Alias:     alias,
 			Message:   "极光推送未初始化",
 		}, nil
 	}
 
-	alias := strconv.FormatInt(userID, 10)
 	logger.Infof("准备发送极光推送: user_id=%d, alias=%s, activity_id=%d, title=%s", userID, alias, activityID, title)
 
 	result, err := s.pusher.Push(ctx, provider.JiguangPushPayload{
@@ -133,4 +150,24 @@ func (s *Service) pushToUser(ctx context.Context, userID int64, title string, co
 	}
 
 	return result, nil
+}
+
+func (s *Service) allowsPush(ctx context.Context, userID int64, messageType string) (bool, error) {
+	if s.users == nil {
+		return true, nil
+	}
+
+	item, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+
+	switch messageType {
+	case TypeActivityReview, TypeRegistration:
+		return item.AllowsActivityReminderPush(), nil
+	case TypeSystem:
+		return item.AllowsSystemMessagePush(), nil
+	default:
+		return item.IsNotificationPermissionEnabled(), nil
+	}
 }

@@ -22,6 +22,7 @@ const STATUS_OPTIONS = [
   { label: '进行中', value: 'ongoing' },
   { label: '已拒绝', value: 'rejected' },
   { label: '已下架', value: 'taken_down' },
+  { label: '已取消', value: 'cancelled' },
 ]
 
 const statusMeta: Record<string, { text: string; type: 'warning' | 'success' | 'danger' | 'info' }> = {
@@ -29,6 +30,7 @@ const statusMeta: Record<string, { text: string; type: 'warning' | 'success' | '
   ongoing: { text: '进行中', type: 'success' },
   rejected: { text: '已拒绝', type: 'danger' },
   taken_down: { text: '已下架', type: 'info' },
+  cancelled: { text: '已取消', type: 'info' },
 }
 
 const loading = ref(false)

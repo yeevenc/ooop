@@ -20,6 +20,8 @@ type UserRepository interface {
 	UpdatePassword(ctx context.Context, id int64, username string, passwordHash string) error
 	UpdatePhone(ctx context.Context, id int64, phone string) error
 	UpdateProfile(ctx context.Context, id int64, update ProfileUpdate) error
+	UpdatePrivacySettings(ctx context.Context, id int64, update PrivacySettingsUpdate) error
+	UpdateNotificationSettings(ctx context.Context, id int64, update NotificationSettingsUpdate) error
 	UpdatePushRegistration(ctx context.Context, id int64, platform string, registrationID string) error
 	UpdateRealNameVerification(ctx context.Context, id int64, realName string, idCardMask string, gender string, verifiedAt time.Time) error
 	TouchLastLogin(ctx context.Context, id int64, loginAt time.Time, meta ClientMeta) error
@@ -116,6 +118,22 @@ func (r *GormUserRepository) UpdatePhone(ctx context.Context, id int64, phone st
 // UpdateProfile 仅更新调用方显式传入(非 nil)的资料字段，未传入的字段保持不变。
 func (r *GormUserRepository) UpdateProfile(ctx context.Context, id int64, update ProfileUpdate) error {
 	updates := profileUpdateColumns(update)
+	if len(updates) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *GormUserRepository) UpdatePrivacySettings(ctx context.Context, id int64, update PrivacySettingsUpdate) error {
+	updates := privacySettingsUpdateColumns(update)
+	if len(updates) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *GormUserRepository) UpdateNotificationSettings(ctx context.Context, id int64, update NotificationSettingsUpdate) error {
+	updates := notificationSettingsUpdateColumns(update)
 	if len(updates) == 0 {
 		return nil
 	}

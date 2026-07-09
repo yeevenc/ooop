@@ -83,7 +83,23 @@ func (h *Handler) userList(c *gin.Context) {
 	}
 
 	result, err := h.appUsers.ListUsers(c.Request.Context(), query)
-	writeResult(c, result, err)
+	if err != nil {
+		writeResult(c, nil, err)
+		return
+	}
+
+	// 转换为后台管理格式（时间字段格式化为 YYYY-MM-DD HH:mm:ss）
+	adminUsers := make([]AdminUserResponse, 0, len(result.List))
+	for _, u := range result.List {
+		adminUsers = append(adminUsers, ToAdminUserResponse(u))
+	}
+
+	writeResult(c, AdminUserListResult{
+		List:     adminUsers,
+		Total:    result.Total,
+		Page:     result.Page,
+		PageSize: result.PageSize,
+	}, nil)
 }
 
 func (h *Handler) updateUser(c *gin.Context) {
@@ -110,7 +126,13 @@ func (h *Handler) userDetail(c *gin.Context) {
 	}
 
 	result, err := h.appUsers.Profile(c.Request.Context(), id)
-	writeResult(c, result, err)
+	if err != nil {
+		writeResult(c, nil, err)
+		return
+	}
+
+	// 转换为后台管理格式（时间字段格式化为 YYYY-MM-DD HH:mm:ss）
+	writeResult(c, ToAdminUserResponse(result), nil)
 }
 
 func bindJSON(c *gin.Context, target interface{}) bool {

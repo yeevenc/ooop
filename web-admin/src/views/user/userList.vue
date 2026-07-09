@@ -201,6 +201,9 @@ onMounted(() => {
           </template>
         </el-table-column>
         <el-table-column prop="last_login_at" label="最近登录" min-width="180">
+          <template #default="{ row }">
+            {{ row.last_login_at || '-' }}
+          </template>
         </el-table-column>
         <el-table-column prop="created_at" label="注册时间" min-width="180">
         </el-table-column>
