@@ -231,6 +231,68 @@ func TestNotificationSettingsFollowSystemPermission(t *testing.T) {
 	}
 }
 
+func TestPushRegistrationSupportsSeparateUpdatesAndUnbind(t *testing.T) {
+	service := newTestAuthService()
+	ctx := context.Background()
+	login, err := service.AliyunMobileLogin(ctx, "aliyun-token", ClientMeta{})
+	if err != nil {
+		t.Fatalf("AliyunMobileLogin() error = %v", err)
+	}
+
+	platform := "hmos"
+	registrationID := "jiguang-registration"
+	if err := service.BindPushRegistration(ctx, login.User.ID, PushRegistrationUpdate{
+		Platform:       &platform,
+		RegistrationID: &registrationID,
+	}); err != nil {
+		t.Fatalf("BindPushRegistration(jiguang) error = %v", err)
+	}
+	harmonyToken := "harmony-token"
+	if err := service.BindPushRegistration(ctx, login.User.ID, PushRegistrationUpdate{
+		HarmonyPushToken: &harmonyToken,
+	}); err != nil {
+		t.Fatalf("BindPushRegistration(harmony) error = %v", err)
+	}
+
+	item, err := service.users.FindByID(ctx, login.User.ID)
+	if err != nil {
+		t.Fatalf("FindByID() error = %v", err)
+	}
+	if item.RegistrationID != registrationID || item.HarmonyPushToken != harmonyToken {
+		t.Fatalf("push registration = %s/%s", item.RegistrationID, item.HarmonyPushToken)
+	}
+
+	second, err := service.RegisterByPassword(ctx, "13700137000", "push_user", "password123", ClientMeta{})
+	if err != nil {
+		t.Fatalf("RegisterByPassword() error = %v", err)
+	}
+	if err := service.BindPushRegistration(ctx, second.User.ID, PushRegistrationUpdate{
+		Platform:         &platform,
+		RegistrationID:   &registrationID,
+		HarmonyPushToken: &harmonyToken,
+	}); err != nil {
+		t.Fatalf("BindPushRegistration(second user) error = %v", err)
+	}
+	item, err = service.users.FindByID(ctx, login.User.ID)
+	if err != nil {
+		t.Fatalf("FindByID(first user) error = %v", err)
+	}
+	if item.RegistrationID != "" || item.HarmonyPushToken != "" {
+		t.Fatalf("first user push registration should be reassigned: %+v", item)
+	}
+
+	if err := service.UnbindPushRegistration(ctx, second.User.ID); err != nil {
+		t.Fatalf("UnbindPushRegistration() error = %v", err)
+	}
+	item, err = service.users.FindByID(ctx, second.User.ID)
+	if err != nil {
+		t.Fatalf("FindByID() after unbind error = %v", err)
+	}
+	if item.PushPlatform != "" || item.RegistrationID != "" || item.HarmonyPushToken != "" {
+		t.Fatalf("push registration after unbind = %+v", item)
+	}
+}
+
 func TestVerifyRealNameUpdatesGenderWhenPassed(t *testing.T) {
 	service := newTestAuthService()
 	service.realNameVerifier = fixedRealNameVerifier{
@@ -602,15 +664,34 @@ func (r *memoryUserRepository) UpdateNotificationSettings(ctx context.Context, i
 	return nil
 }
 
-func (r *memoryUserRepository) UpdatePushRegistration(ctx context.Context, id int64, platform string, registrationID string) error {
+func (r *memoryUserRepository) UpdatePushRegistration(ctx context.Context, id int64, update PushRegistrationUpdate) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	item, ok := r.items[id]
 	if !ok {
 		return ErrNotFound
 	}
-	item.PushPlatform = platform
-	item.RegistrationID = registrationID
+	for otherID, other := range r.items {
+		if otherID == id {
+			continue
+		}
+		if update.RegistrationID != nil && *update.RegistrationID != "" && other.RegistrationID == *update.RegistrationID {
+			other.RegistrationID = ""
+		}
+		if update.HarmonyPushToken != nil && *update.HarmonyPushToken != "" && other.HarmonyPushToken == *update.HarmonyPushToken {
+			other.HarmonyPushToken = ""
+		}
+		r.items[otherID] = other
+	}
+	if update.Platform != nil {
+		item.PushPlatform = *update.Platform
+	}
+	if update.RegistrationID != nil {
+		item.RegistrationID = *update.RegistrationID
+	}
+	if update.HarmonyPushToken != nil {
+		item.HarmonyPushToken = *update.HarmonyPushToken
+	}
 	item.UpdatedAt = time.Now()
 	r.items[id] = item
 	return nil

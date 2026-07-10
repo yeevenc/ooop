@@ -110,20 +110,25 @@ function showReviewNotificationResult(result: PushNotificationResult | undefined
     return
   }
 
-  if (result.success) {
+  const failedChannels = result.channels?.filter(item => !item.success) ?? []
+  if (result.success && failedChannels.length === 0) {
     ElMessage.success(`已${actionText}，Push 已发送`)
     return
   }
 
   const details = [
-    `已${actionText}，但 Push 发送失败`,
+    result.success ? `已${actionText}，但部分 Push 通道未发送成功` : `已${actionText}，但 Push 发送失败`,
     `目标别名：${result.alias || '-'}`,
     `触发状态：${result.triggered ? '已触发' : '未触发'}`,
-    `错误信息：${result.message || '-'}`,
+    `发送结果：${result.message || '-'}`,
   ]
 
-  if (result.response) {
-    details.push(`极光返回：${result.response}`)
+  for (const channel of result.channels ?? []) {
+    const channelName = channel.channel === 'harmony' ? '鸿蒙' : '极光'
+    details.push(`${channelName}：${channel.message || (channel.success ? '发送成功' : '发送失败')}`)
+    if (channel.response && !channel.success) {
+      details.push(`${channelName}返回：${channel.response}`)
+    }
   }
 
   ElMessageBox.alert(details.join('\n'), 'Push 发送结果', {

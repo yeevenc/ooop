@@ -22,7 +22,7 @@ type UserRepository interface {
 	UpdateProfile(ctx context.Context, id int64, update ProfileUpdate) error
 	UpdatePrivacySettings(ctx context.Context, id int64, update PrivacySettingsUpdate) error
 	UpdateNotificationSettings(ctx context.Context, id int64, update NotificationSettingsUpdate) error
-	UpdatePushRegistration(ctx context.Context, id int64, platform string, registrationID string) error
+	UpdatePushRegistration(ctx context.Context, id int64, update PushRegistrationUpdate) error
 	UpdateRealNameVerification(ctx context.Context, id int64, realName string, idCardMask string, gender string, verifiedAt time.Time) error
 	TouchLastLogin(ctx context.Context, id int64, loginAt time.Time, meta ClientMeta) error
 	CancelAccount(ctx context.Context, id int64) error
@@ -140,12 +140,29 @@ func (r *GormUserRepository) UpdateNotificationSettings(ctx context.Context, id 
 	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(updates).Error
 }
 
-func (r *GormUserRepository) UpdatePushRegistration(ctx context.Context, id int64, platform string, registrationID string) error {
-	updates := map[string]interface{}{
-		"push_platform":   normalizeMetaValue(platform),
-		"registration_id": normalizeMetaValue(registrationID),
+func (r *GormUserRepository) UpdatePushRegistration(ctx context.Context, id int64, update PushRegistrationUpdate) error {
+	updates := pushRegistrationUpdateColumns(update)
+	if len(updates) == 0 {
+		return nil
 	}
-	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(updates).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 同一个设备 Token 只归属当前登录用户，避免账号切换后旧账号继续向该设备发送通知。
+		if update.HarmonyPushToken != nil && *update.HarmonyPushToken != "" {
+			if err := tx.Model(&User{}).
+				Where("id <> ? AND harmony_push_token = ?", id, *update.HarmonyPushToken).
+				Update("harmony_push_token", "").Error; err != nil {
+				return err
+			}
+		}
+		if update.RegistrationID != nil && *update.RegistrationID != "" {
+			if err := tx.Model(&User{}).
+				Where("id <> ? AND registration_id = ?", id, *update.RegistrationID).
+				Update("registration_id", "").Error; err != nil {
+				return err
+			}
+		}
+		return tx.Model(&User{}).Where("id = ?", id).Updates(updates).Error
+	})
 }
 
 func (r *GormUserRepository) UpdateRealNameVerification(ctx context.Context, id int64, realName string, idCardMask string, gender string, verifiedAt time.Time) error {

@@ -42,6 +42,7 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	userGroup.PUT("/notification-settings", h.updateNotificationSettings)
 	userGroup.PUT("/phone", h.changePhone)
 	userGroup.PUT("/push-registration", h.bindPushRegistration)
+	userGroup.DELETE("/push-registration", h.unbindPushRegistration)
 	userGroup.POST("/real-name-verify", h.realNameVerify)
 	userGroup.DELETE("/account", h.cancelAccount)
 
@@ -264,20 +265,35 @@ func (h *Handler) bindPushRegistration(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Platform       string `json:"platform"`
-		RegistrationID string `json:"registration_id"`
+		Platform         *string `json:"platform"`
+		RegistrationID   *string `json:"registration_id"`
+		HarmonyPushToken *string `json:"harmony_push_token"`
 	}
 	if !bindJSON(c, &req) {
 		return
 	}
 	logger.Infof(
-		"收到 push registration 绑定请求: user_id=%d, platform=%s, registration_id=%s",
+		"收到 push registration 绑定请求: user_id=%d, registration_id_updated=%t, harmony_token_updated=%t",
 		userID,
-		req.Platform,
-		req.RegistrationID,
+		req.RegistrationID != nil,
+		req.HarmonyPushToken != nil,
 	)
-	err := h.service.BindPushRegistration(c.Request.Context(), userID, req.Platform, req.RegistrationID)
+	err := h.service.BindPushRegistration(c.Request.Context(), userID, PushRegistrationUpdate{
+		Platform:         req.Platform,
+		RegistrationID:   req.RegistrationID,
+		HarmonyPushToken: req.HarmonyPushToken,
+	})
 	writeServiceResult(c, gin.H{"bound": true}, err)
+}
+
+func (h *Handler) unbindPushRegistration(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+	err := h.service.UnbindPushRegistration(c.Request.Context(), userID)
+	writeServiceResult(c, gin.H{"bound": false}, err)
 }
 
 func (h *Handler) realNameVerify(c *gin.Context) {

@@ -22,7 +22,7 @@ type Service struct {
 }
 
 type PushSender interface {
-	Push(ctx context.Context, payload provider.JiguangPushPayload) (provider.JiguangPushResult, error)
+	Push(ctx context.Context, payload provider.PushPayload) (provider.PushResult, error)
 }
 
 func NewService(messages Repository, pusher PushSender, users user.UserRepository) *Service {
@@ -33,44 +33,46 @@ func NewService(messages Repository, pusher PushSender, users user.UserRepositor
 	}
 }
 
-func (s *Service) CreateActivityReviewMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, approved bool) (provider.JiguangPushResult, error) {
+func (s *Service) CreateActivityReviewMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, approved bool) (provider.PushResult, error) {
 	title := "活动审核通知"
 	content := fmt.Sprintf("您发布的%s审核拒绝。", strings.TrimSpace(activityTitle))
 	if approved {
 		content = fmt.Sprintf("您发布的%s审核成功。", strings.TrimSpace(activityTitle))
 	}
 
-	if err := s.messages.Create(ctx, &UserMessage{
+	item := &UserMessage{
 		UserID:     userID,
 		Type:       TypeActivityReview,
 		Title:      title,
 		Content:    content,
 		ActivityID: &activityID,
-	}); err != nil {
-		return provider.JiguangPushResult{}, err
+	}
+	if err := s.messages.Create(ctx, item); err != nil {
+		return provider.PushResult{}, err
 	}
 
-	return s.pushToUser(ctx, userID, TypeActivityReview, title, content, activityID)
+	return s.pushToUser(ctx, userID, TypeActivityReview, title, content, item.ID, activityID)
 }
 
-func (s *Service) CreateActivityRegistrationMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, applicantName string) (provider.JiguangPushResult, error) {
+func (s *Service) CreateActivityRegistrationMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, applicantName string) (provider.PushResult, error) {
 	title := "活动报名通知"
 	content := fmt.Sprintf("%s报名参加了您发布的%s。", strings.TrimSpace(applicantName), strings.TrimSpace(activityTitle))
 	if strings.TrimSpace(applicantName) == "" {
 		content = fmt.Sprintf("有人报名参加了您发布的%s。", strings.TrimSpace(activityTitle))
 	}
 
-	if err := s.messages.Create(ctx, &UserMessage{
+	item := &UserMessage{
 		UserID:     userID,
 		Type:       TypeRegistration,
 		Title:      title,
 		Content:    content,
 		ActivityID: &activityID,
-	}); err != nil {
-		return provider.JiguangPushResult{}, err
+	}
+	if err := s.messages.Create(ctx, item); err != nil {
+		return provider.PushResult{}, err
 	}
 
-	return s.pushToUser(ctx, userID, TypeRegistration, title, content, activityID)
+	return s.pushToUser(ctx, userID, TypeRegistration, title, content, item.ID, activityID)
 }
 
 func (s *Service) ListUserMessages(ctx context.Context, userID int64, page int, pageSize int) ([]PublicMessage, error) {
@@ -110,15 +112,15 @@ func formatID(id int64) string {
 	return strconv.FormatInt(id, 10)
 }
 
-func (s *Service) pushToUser(ctx context.Context, userID int64, messageType string, title string, content string, activityID int64) (provider.JiguangPushResult, error) {
+func (s *Service) pushToUser(ctx context.Context, userID int64, messageType string, title string, content string, messageID int64, activityID int64) (provider.PushResult, error) {
 	alias := strconv.FormatInt(userID, 10)
-	allowed, err := s.allowsPush(ctx, userID, messageType)
+	pushUser, allowed, err := s.pushUser(ctx, userID, messageType)
 	if err != nil {
-		return provider.JiguangPushResult{}, err
+		return provider.PushResult{}, err
 	}
 	if !allowed {
-		logger.Infof("极光推送跳过: 用户通知权限关闭, user_id=%d, activity_id=%d, type=%s", userID, activityID, messageType)
-		return provider.JiguangPushResult{
+		logger.Infof("推送跳过: 用户通知权限关闭, user_id=%d, activity_id=%d, type=%s", userID, activityID, messageType)
+		return provider.PushResult{
 			Triggered: false,
 			Success:   false,
 			Alias:     alias,
@@ -127,47 +129,58 @@ func (s *Service) pushToUser(ctx context.Context, userID int64, messageType stri
 	}
 
 	if s.pusher == nil {
-		logger.Warnf("极光推送跳过: pusher 未初始化, user_id=%d, activity_id=%d", userID, activityID)
-		return provider.JiguangPushResult{
+		logger.Warnf("推送跳过: pusher 未初始化, user_id=%d, activity_id=%d", userID, activityID)
+		return provider.PushResult{
 			Triggered: false,
 			Success:   false,
 			Alias:     alias,
-			Message:   "极光推送未初始化",
+			Message:   "推送服务未初始化",
 		}, nil
 	}
 
-	logger.Infof("准备发送极光推送: user_id=%d, alias=%s, activity_id=%d, title=%s", userID, alias, activityID, title)
+	logger.Infof("准备发送双通道推送: user_id=%d, message_id=%d, activity_id=%d, title=%s", userID, messageID, activityID, title)
 
-	result, err := s.pusher.Push(ctx, provider.JiguangPushPayload{
-		Alias:      alias,
-		Title:      title,
-		Alert:      content,
-		ActivityID: activityID,
+	result, err := s.pusher.Push(ctx, provider.PushPayload{
+		Alias:            alias,
+		HarmonyPushToken: pushUser.HarmonyPushToken,
+		Title:            title,
+		Alert:            content,
+		MessageType:      messageType,
+		Category:         harmonyCategory(messageType),
+		MessageID:        messageID,
+		ActivityID:       activityID,
 	})
 	if err != nil {
-		logger.Errorf("极光推送发送失败: user_id=%d, alias=%s, activity_id=%d, error=%v", userID, alias, activityID, err)
+		logger.Errorf("双通道推送发送失败: user_id=%d, message_id=%d, activity_id=%d, error=%v", userID, messageID, activityID, err)
 		return result, err
 	}
 
 	return result, nil
 }
 
-func (s *Service) allowsPush(ctx context.Context, userID int64, messageType string) (bool, error) {
+func (s *Service) pushUser(ctx context.Context, userID int64, messageType string) (user.User, bool, error) {
 	if s.users == nil {
-		return true, nil
+		return user.User{}, true, nil
 	}
 
 	item, err := s.users.FindByID(ctx, userID)
 	if err != nil {
-		return false, err
+		return user.User{}, false, err
 	}
 
 	switch messageType {
 	case TypeActivityReview, TypeRegistration:
-		return item.AllowsActivityReminderPush(), nil
+		return item, item.AllowsActivityReminderPush(), nil
 	case TypeSystem:
-		return item.AllowsSystemMessagePush(), nil
+		return item, item.AllowsSystemMessagePush(), nil
 	default:
-		return item.IsNotificationPermissionEnabled(), nil
+		return item, item.IsNotificationPermissionEnabled(), nil
 	}
+}
+
+func harmonyCategory(messageType string) string {
+	if messageType == TypeRegistration || messageType == TypeInteraction {
+		return provider.HarmonyCategorySocialDynamics
+	}
+	return provider.HarmonyCategorySystemReminder
 }

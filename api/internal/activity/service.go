@@ -87,8 +87,8 @@ type Service struct {
 }
 
 type ReviewNotifier interface {
-	CreateActivityReviewMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, approved bool) (provider.JiguangPushResult, error)
-	CreateActivityRegistrationMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, applicantName string) (provider.JiguangPushResult, error)
+	CreateActivityReviewMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, approved bool) (provider.PushResult, error)
+	CreateActivityRegistrationMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, applicantName string) (provider.PushResult, error)
 }
 
 type CreateInput struct {
@@ -204,8 +204,8 @@ type AdminActivityListResult struct {
 }
 
 type ReviewActivityResult struct {
-	Activity     PublicActivity             `json:"activity"`
-	Notification provider.JiguangPushResult `json:"notification"`
+	Activity     PublicActivity      `json:"activity"`
+	Notification provider.PushResult `json:"notification"`
 }
 
 // AdminActivityUpdate 后台编辑活动可改字段（仅文本类；日期/截止/坐标/图片/发起人/状态保持不变）。
@@ -947,7 +947,7 @@ func (s *Service) ReviewActivity(ctx context.Context, id int64, approve bool) (R
 		return ReviewActivityResult{}, err
 	}
 	item.Status = next
-	notification := provider.JiguangPushResult{
+	notification := provider.PushResult{
 		Triggered: false,
 		Success:   false,
 		Alias:     strconv.FormatInt(item.UserID, 10),

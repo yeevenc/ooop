@@ -20,25 +20,8 @@ type JiguangPusher struct {
 	httpClient *http.Client
 }
 
-const defaultHarmonyOSCategory = "WORK"
-const defaultHarmonyOSIntent = "action.system.home"
-const defaultHarmonyOSDistribution = "secondary_push"
+const defaultHarmonyOSDistribution = "jpush"
 const defaultPushTimeToLive = 300
-
-type JiguangPushPayload struct {
-	Alias      string
-	Title      string
-	Alert      string
-	ActivityID int64
-}
-
-type JiguangPushResult struct {
-	Triggered bool   `json:"triggered"`
-	Success   bool   `json:"success"`
-	Alias     string `json:"alias"`
-	Message   string `json:"message"`
-	Response  string `json:"response,omitempty"`
-}
 
 func NewJiguangPusher(cfg config.JiguangConfig) *JiguangPusher {
 	return &JiguangPusher{
@@ -49,11 +32,10 @@ func NewJiguangPusher(cfg config.JiguangConfig) *JiguangPusher {
 	}
 }
 
-func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) (JiguangPushResult, error) {
+func (p *JiguangPusher) Push(ctx context.Context, payload PushPayload) (PushChannelResult, error) {
 	alias := strings.TrimSpace(payload.Alias)
-	result := JiguangPushResult{
-		Triggered: true,
-		Alias:     alias,
+	result := PushChannelResult{
+		Channel: PushChannelJiguang,
 	}
 	if alias == "" {
 		err := errors.New("极光推送别名不能为空")
@@ -81,30 +63,21 @@ func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) (J
 		"audience": map[string]interface{}{
 			"alias": []string{alias},
 		},
-		"notification": map[string]interface{}{
-			"alert": payload.Alert,
-			"hmos": map[string]interface{}{
-				"alert":    payload.Alert,
-				"title":    payload.Title,
-				"category": defaultHarmonyOSCategory,
-				"intent": map[string]interface{}{
-					"url": defaultHarmonyOSIntent,
-				},
-				"badge_add_num":      1,
-				"display_foreground": "1", // 值为 "1" 时，APP 在前台会弹出/展示通知栏消息。
-				"push_type":          0,
-				"test_message":       false,
-				"extras": map[string]interface{}{
-					"activityId": fmt.Sprintf("%d", payload.ActivityID),
-				},
+		"message": map[string]interface{}{
+			"msg_content":  payload.Alert,
+			"title":        payload.Title,
+			"content_type": "text",
+			"extras": map[string]interface{}{
+				"messageId":  fmt.Sprintf("%d", payload.MessageID),
+				"activityId": fmt.Sprintf("%d", payload.ActivityID),
+				"type":       payload.MessageType,
 			},
 		},
 		"options": map[string]interface{}{
-			"time_to_live":   defaultPushTimeToLive,
-			"classification": 1, // 消息分类，0：代表运营消息。1：代表系统消息。
+			"time_to_live": defaultPushTimeToLive,
 			"third_party_channel": map[string]interface{}{
 				"hmos": map[string]interface{}{
-					// 鸿蒙不指定时 VIP 默认 first_ospush；这里对齐控制台「极光通道优先，厂商辅助」。
+					// 极光只承担进程存活时的实时消息，系统通知统一由 Push Kit 下发。
 					"distribution": defaultHarmonyOSDistribution,
 				},
 			},
@@ -124,6 +97,7 @@ func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) (J
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.SetBasicAuth(p.cfg.AppKey, p.cfg.MasterSecret)
+	result.Triggered = true
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
@@ -158,6 +132,6 @@ func (p *JiguangPusher) Push(ctx context.Context, payload JiguangPushPayload) (J
 
 	logger.Infof("极光推送发送成功: alias=%s, title=%s, response=%s", alias, payload.Title, string(respBody))
 	result.Success = true
-	result.Message = "极光推送发送成功"
+	result.Message = "极光自定义消息发送成功"
 	return result, nil
 }

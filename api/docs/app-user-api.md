@@ -345,7 +345,44 @@ Content-Type: application/json
 
 返回更新后的设置结构，结构同「获取隐私和通知设置」。该接口用于 APP 端同步手机系统通知权限状态，不直接代替系统权限开关。
 
-## 12. 上传图片
+## 12. 绑定或更新推送标识
+
+客户端获取极光 Registration ID 或 HarmonyOS Push Token 后调用。支持只提交发生变化的字段，`registration_id` 和 `harmony_push_token` 至少提交一个。
+
+```http
+PUT /user/push-registration
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+```json
+{
+  "platform": "hmos",
+  "registration_id": "极光 Registration ID",
+  "harmony_push_token": "HarmonyOS Push Token"
+}
+```
+
+客户端每次启动调用 `pushService.getToken()`，Token 发生变化时重新提交 `harmony_push_token`。Token 长度不固定，客户端不要校验固定长度。
+
+客户端还需要完成以下 Push Kit 配置：
+
+```text
+1. 调用 notificationManager.requestEnableNotification() 引导用户开启通知权限。
+2. 全工程只保留一个声明 action.ohos.push.listener 的 PushMessageAbility。
+3. 在该 Ability 中注册 pushService.receiveMessage('DEFAULT', ...) 处理前台消息。
+4. 在入口 Ability 的 onCreate() 和 onNewWant() 中处理通知点击参数。
+5. 极光和 Push Kit 消息统一按 messageId 去重。
+```
+
+退出登录时调用以下接口解绑当前用户与设备推送标识，不需要调用 Push Kit 的 `deleteToken()`：
+
+```http
+DELETE /user/push-registration
+Authorization: Bearer <access_token>
+```
+
+## 13. 上传图片
 
 用于头像等图片上传，后端会上传到七牛云 `ooop` 空间并返回可公开访问的 CDN URL。
 
@@ -387,6 +424,9 @@ status：用户状态，1 表示启用
 register_source：注册来源，aliyun_mobile / mobile_code / password
 hide_region：是否隐藏常驻地区，0 表示展示，1 表示隐藏
 notification_disabled：是否关闭手机系统通知权限，0 表示开启，1 表示关闭
+push_platform：客户端推送平台
+registration_id：极光 Registration ID
+harmony_push_token：HarmonyOS Push Token，最长 2048 字符
 last_login_at：最后登录时间
 created_at：创建时间
 updated_at：更新时间

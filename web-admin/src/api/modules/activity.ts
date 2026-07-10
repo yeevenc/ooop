@@ -45,12 +45,20 @@ export interface ActivityListResult {
   page_size: number
 }
 
+export interface PushChannelResult {
+  channel: string
+  triggered: boolean
+  success: boolean
+  message: string
+  response?: string
+}
+
 export interface PushNotificationResult {
   triggered: boolean
   success: boolean
   alias: string
   message: string
-  response?: string
+  channels?: PushChannelResult[]
 }
 
 export interface AdminActivityReviewResult {

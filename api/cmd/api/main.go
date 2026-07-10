@@ -55,6 +55,8 @@ func main() {
 	aliyunClient := provider.NewAliyunRPCClient(cfg.Aliyun.AccessKeyID, cfg.Aliyun.AccessKeySecret)
 	mobileVerifier := provider.NewJiguangMobileVerifier(cfg.Jiguang)
 	jpushPusher := provider.NewJiguangPusher(cfg.Jiguang)
+	harmonyPusher := provider.NewHarmonyPusher(cfg.HarmonyPush)
+	pushSender := provider.NewDualChannelPusher(jpushPusher, harmonyPusher)
 	smsSender := provider.NewAliyunSMSSender(aliyunClient, cfg.Aliyun.SMS)
 	realNameVerifier := provider.NewAliyunIDCardVerifier(cfg.Aliyun.IDCard)
 
@@ -71,7 +73,7 @@ func main() {
 	})
 	adminService := admin.NewService(adminRepo, passwordHasher, adminTokenManager)
 	activityService := activity.NewService(activityRepo, userRepo)
-	messageService := message.NewService(messageRepo, jpushPusher, userRepo)
+	messageService := message.NewService(messageRepo, pushSender, userRepo)
 	feedbackService := feedback.NewService(feedbackRepo, authService)
 	activityService.SetReviewNotifier(messageService)
 	// 后台账号独立写入 admin_users，不再污染 APP 用户表。

@@ -134,6 +134,12 @@ type NotificationSettingsUpdate struct {
 	NotificationPermissionEnabled *bool
 }
 
+type PushRegistrationUpdate struct {
+	Platform         *string
+	RegistrationID   *string
+	HarmonyPushToken *string
+}
+
 type NotificationSettingsUpdateInput struct {
 	NotificationPermissionEnabled *bool `json:"notification_permission_enabled"`
 }
@@ -472,30 +478,40 @@ func (s *AuthService) UpdateNotificationSettings(ctx context.Context, userID int
 	return userSettings(item), nil
 }
 
-func (s *AuthService) BindPushRegistration(ctx context.Context, userID int64, platform string, registrationID string) error {
-	registrationID = strings.TrimSpace(registrationID)
-	platform = normalizeMetaValue(platform)
-
-	if registrationID == "" {
-		logger.Warnf("绑定 push registration 失败: user_id=%d, registration_id 为空", userID)
+func (s *AuthService) BindPushRegistration(ctx context.Context, userID int64, update PushRegistrationUpdate) error {
+	if update.RegistrationID == nil && update.HarmonyPushToken == nil {
+		logger.Warnf("绑定 push registration 失败: user_id=%d, 未提交推送标识", userID)
 		return ErrInvalidProfile
 	}
+	update = normalizePushRegistrationUpdate(update)
 
 	_, err := s.users.FindByID(ctx, userID)
 	if err != nil {
 		return err
 	}
 
-	if err := s.users.UpdatePushRegistration(ctx, userID, platform, registrationID); err != nil {
+	if err := s.users.UpdatePushRegistration(ctx, userID, update); err != nil {
 		return err
 	}
 	logger.Infof(
-		"绑定 push registration 成功: user_id=%d, platform=%s, registration_id=%s",
+		"绑定 push registration 成功: user_id=%d, registration_id_updated=%t, harmony_token_updated=%t",
 		userID,
-		platform,
-		registrationID,
+		update.RegistrationID != nil,
+		update.HarmonyPushToken != nil,
 	)
 	return nil
+}
+
+func (s *AuthService) UnbindPushRegistration(ctx context.Context, userID int64) error {
+	if _, err := s.users.FindByID(ctx, userID); err != nil {
+		return err
+	}
+	empty := ""
+	return s.users.UpdatePushRegistration(ctx, userID, PushRegistrationUpdate{
+		Platform:         &empty,
+		RegistrationID:   &empty,
+		HarmonyPushToken: &empty,
+	})
 }
 
 func (s *AuthService) CancelAccount(ctx context.Context, userID int64) error {
@@ -761,6 +777,36 @@ func notificationSettingsUpdateColumns(update NotificationSettingsUpdate) map[st
 	columns := map[string]interface{}{}
 	if update.NotificationPermissionEnabled != nil {
 		columns["notification_disabled"] = !*update.NotificationPermissionEnabled
+	}
+	return columns
+}
+
+func normalizePushRegistrationUpdate(update PushRegistrationUpdate) PushRegistrationUpdate {
+	if update.Platform != nil {
+		value := normalizeMetaValue(*update.Platform)
+		update.Platform = &value
+	}
+	if update.RegistrationID != nil {
+		value := strings.TrimSpace(*update.RegistrationID)
+		update.RegistrationID = &value
+	}
+	if update.HarmonyPushToken != nil {
+		value := strings.TrimSpace(*update.HarmonyPushToken)
+		update.HarmonyPushToken = &value
+	}
+	return update
+}
+
+func pushRegistrationUpdateColumns(update PushRegistrationUpdate) map[string]interface{} {
+	columns := make(map[string]interface{})
+	if update.Platform != nil {
+		columns["push_platform"] = *update.Platform
+	}
+	if update.RegistrationID != nil {
+		columns["registration_id"] = *update.RegistrationID
+	}
+	if update.HarmonyPushToken != nil {
+		columns["harmony_push_token"] = *update.HarmonyPushToken
 	}
 	return columns
 }

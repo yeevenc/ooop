@@ -33,6 +33,7 @@ type User struct {
 	DeviceNo             string     `gorm:"size:128;not null;default:''" json:"device_no"`
 	PushPlatform         string     `gorm:"size:32;not null;default:''" json:"push_platform"`
 	RegistrationID       string     `gorm:"size:128;not null;default:''" json:"registration_id"`
+	HarmonyPushToken     string     `gorm:"size:2048;not null;default:''" json:"-"`
 	HideRegion           bool       `gorm:"column:hide_region;not null;default:false" json:"-"`
 	NotificationDisabled bool       `gorm:"column:notification_disabled;not null;default:false" json:"-"`
 	PasswordHash         string     `gorm:"size:255" json:"-"`

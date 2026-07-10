@@ -10,14 +10,15 @@ import (
 )
 
 type Config struct {
-	App      AppConfig
-	HTTP     HTTPConfig
-	Database DatabaseConfig
-	JWT      JWTConfig
-	Auth     AuthConfig
-	Aliyun   AliyunConfig
-	Jiguang  JiguangConfig
-	Qiniu    QiniuConfig
+	App         AppConfig
+	HTTP        HTTPConfig
+	Database    DatabaseConfig
+	JWT         JWTConfig
+	Auth        AuthConfig
+	Aliyun      AliyunConfig
+	Jiguang     JiguangConfig
+	HarmonyPush HarmonyPushConfig
+	Qiniu       QiniuConfig
 }
 
 type AppConfig struct {
@@ -92,6 +93,12 @@ type JiguangConfig struct {
 	PrivateKey   string
 }
 
+type HarmonyPushConfig struct {
+	ServiceAccountFile string
+	PushURL            string
+	TestMessage        bool
+}
+
 type QiniuConfig struct {
 	AccessKey string
 	SecretKey string
@@ -157,6 +164,11 @@ func Load() Config {
 			VerifyURL:    getEnv("JIGUANG_VERIFY_URL", "https://api.verification.jpush.cn/v1/web/loginTokenVerify"),
 			PushURL:      getEnv("JIGUANG_PUSH_URL", "https://api.jpush.cn/v3/push"),
 			PrivateKey:   normalizePrivateKey(getEnv("JIGUANG_PRIVATE_KEY", "")),
+		},
+		HarmonyPush: HarmonyPushConfig{
+			ServiceAccountFile: getEnv("HARMONY_PUSH_SERVICE_ACCOUNT_FILE", ""),
+			PushURL:            getEnv("HARMONY_PUSH_URL", "https://push-api.cloud.huawei.com"),
+			TestMessage:        getBoolEnv("HARMONY_PUSH_TEST_MESSAGE", false),
 		},
 		Qiniu: QiniuConfig{
 			AccessKey: getEnv("QINIU_ACCESS_KEY", ""),
