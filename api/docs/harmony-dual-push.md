@@ -16,6 +16,59 @@
 
 发送通知前，客户端需要调用 `notificationManager.requestEnableNotification()` 引导用户开启系统通知权限。点击通知进入首页时，在入口 Ability 的 `onCreate()` 和 `onNewWant()` 中读取 `messageId`、`activityId` 和 `type`。
 
+## 鸿蒙通知消息体（对齐官方 push-send-alert）
+
+```http
+POST https://push-api.cloud.huawei.com/v3/{projectId}/messages:send
+Content-Type: application/json; charset=UTF-8
+Authorization: Bearer <JWT>
+push-type: 0
+```
+
+```json
+{
+  "payload": {
+    "notification": {
+      "category": "WORK",
+      "title": "活动审核通知",
+      "body": "您发布的活动审核成功。",
+      "clickAction": {
+        "actionType": 0,
+        "data": {
+          "messageId": "88",
+          "activityId": "99",
+          "type": "activity_review"
+        }
+      },
+      "foregroundShow": false,
+      "badge": { "addNum": 1 },
+      "notifyId": 88
+    }
+  },
+  "target": {
+    "token": ["PushToken"]
+  },
+  "pushOptions": {
+    "ttl": 86400,
+    "testMessage": false
+  }
+}
+```
+
+### category 映射
+
+当前 AGC 已开通 **WORK** 自分类权益，服务端**全部业务消息**统一发送：
+
+| 业务类型 | category | 说明 |
+|---------|----------|------|
+| 审核 / 报名 / 互动 / 系统 | `WORK` | 工作事项、业务流程、审核进度提醒 |
+
+空或非法 category 会在发送层归一为 `MARKETING`（兜底）。
+
+`category` 必须使用华为官方枚举，**不要**使用 `SYSTEM_REMINDER`、`SOCIAL_DYNAMICS` 等自定义字符串。
+
+后续若开通 `SUBSCRIPTION` 等权益，再按 `messageType` 细分映射。调测可开 `HARMONY_PUSH_TEST_MESSAGE=true`。
+
 ## Push Token
 
 - 客户端每次启动时调用 `pushService.getToken()`，获取成功后上报服务端。

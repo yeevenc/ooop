@@ -10,10 +10,19 @@ import (
 )
 
 const (
-	PushChannelJiguang            = "jiguang"
-	PushChannelHarmony            = "harmony"
-	HarmonyCategorySystemReminder = "SYSTEM_REMINDER"
-	HarmonyCategorySocialDynamics = "SOCIAL_DYNAMICS"
+	PushChannelJiguang = "jiguang"
+	PushChannelHarmony = "harmony"
+
+	// 华为 Push Kit 官方 category（大写），见场景化消息分类标准。
+	// 未开通对应自分类权益时，云端会回落为资讯营销（MARKETING）频控。
+	HarmonyCategoryMarketing     = "MARKETING"
+	HarmonyCategoryWork          = "WORK"          // 审核进度、待办、系统业务提醒
+	HarmonyCategorySubscription  = "SUBSCRIPTION"  // 用户相关互动/订阅提醒
+	HarmonyCategoryAccount       = "ACCOUNT"       // 账号动态
+
+	// 兼容旧常量名（取值已纠正为官方 category）
+	HarmonyCategorySystemReminder = HarmonyCategoryWork
+	HarmonyCategorySocialDynamics = HarmonyCategorySubscription
 )
 
 type PushPayload struct {

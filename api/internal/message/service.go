@@ -178,9 +178,9 @@ func (s *Service) pushUser(ctx context.Context, userID int64, messageType string
 	}
 }
 
-func harmonyCategory(messageType string) string {
-	if messageType == TypeRegistration || messageType == TypeInteraction {
-		return provider.HarmonyCategorySocialDynamics
-	}
-	return provider.HarmonyCategorySystemReminder
+// 当前 AGC 仅开通 WORK 自分类权益，业务消息统一使用 WORK：
+// 审核进度、报名进度、系统提醒等均归为「工作事项 / 业务流程提醒」。
+// 若后续开通 SUBSCRIPTION 等类型，再按 messageType 细分映射。
+func harmonyCategory(_ string) string {
+	return provider.HarmonyCategoryWork
 }

@@ -24,7 +24,14 @@ import (
 	"ooop-admin-api/internal/logger"
 )
 
+// push-type: 0 = Alert 通知消息（见 push-send-alert）
 const harmonyPushTypeNotification = "0"
+
+// 通知消息离线缓存：文档示例常用 86400 秒（1 天），覆盖杀进程后回连场景
+const harmonyPushTimeToLive = 86400
+
+// notifyId 合法范围 [0, 2147483647]
+const harmonyMaxNotifyID = 2147483647
 
 type HarmonyPusher struct {
 	cfg         config.HarmonyPushConfig
@@ -55,6 +62,8 @@ type harmonyPayload struct {
 	Notification harmonyNotification `json:"notification"`
 }
 
+// 对齐华为 V3 通知消息体：category/title/body/clickAction 必填语义，
+// foregroundShow=false 时前台不展示通知栏，由客户端 receiveMessage 处理。
 type harmonyNotification struct {
 	Category       string             `json:"category"`
 	Title          string             `json:"title"`
@@ -62,11 +71,13 @@ type harmonyNotification struct {
 	ClickAction    harmonyClickAction `json:"clickAction"`
 	ForegroundShow bool               `json:"foregroundShow"`
 	Badge          harmonyBadge       `json:"badge"`
+	NotifyID       *int               `json:"notifyId,omitempty"`
 }
 
+// actionType: 0 打开应用首页；data 在客户端 onCreate/onNewWant 的 want.parameters 中读取
 type harmonyClickAction struct {
 	ActionType int               `json:"actionType"`
-	Data       map[string]string `json:"data"`
+	Data       map[string]string `json:"data,omitempty"`
 }
 
 type harmonyBadge struct {
@@ -79,7 +90,7 @@ type harmonyTarget struct {
 
 type harmonyPushOptions struct {
 	TTL         int  `json:"ttl"`
-	TestMessage bool `json:"testMessage"`
+	TestMessage bool `json:"testMessage,omitempty"`
 }
 
 type harmonyPushResponse struct {
@@ -120,27 +131,33 @@ func (p *HarmonyPusher) Push(ctx context.Context, payload PushPayload) (PushChan
 		result.Message = err.Error()
 		return result, err
 	}
+
+	// 确保 project_id 已加载（authorizationToken 会触发 serviceAccount）
+	account, err := p.serviceAccount()
+	if err != nil {
+		result.Message = err.Error()
+		return result, err
+	}
+
 	requestBody := harmonyPushRequest{
 		Payload: harmonyPayload{
 			Notification: harmonyNotification{
-				Category:       payload.Category,
-				Title:          payload.Title,
-				Body:           payload.Alert,
+				// category 必填；非法/空值回落 MARKETING，避免因自定义字符串发送失败
+				Category:       normalizeHarmonyCategory(payload.Category),
+				Title:          strings.TrimSpace(payload.Title),
+				Body:           strings.TrimSpace(payload.Alert),
 				ForegroundShow: false,
 				ClickAction: harmonyClickAction{
 					ActionType: 0,
-					Data: map[string]string{
-						"messageId":  fmt.Sprintf("%d", payload.MessageID),
-						"activityId": fmt.Sprintf("%d", payload.ActivityID),
-						"type":       payload.MessageType,
-					},
+					Data:       buildHarmonyClickData(payload),
 				},
-				Badge: harmonyBadge{AddNum: 1},
+				Badge:    harmonyBadge{AddNum: 1},
+				NotifyID: buildHarmonyNotifyID(payload.MessageID),
 			},
 		},
 		Target: harmonyTarget{Token: []string{token}},
 		PushOptions: harmonyPushOptions{
-			TTL:         defaultPushTimeToLive,
+			TTL:         harmonyPushTimeToLive,
 			TestMessage: p.cfg.TestMessage,
 		},
 	}
@@ -150,7 +167,8 @@ func (p *HarmonyPusher) Push(ctx context.Context, payload PushPayload) (PushChan
 		return result, err
 	}
 
-	pushURL := fmt.Sprintf("%s/v3/%s/messages:send", strings.TrimRight(p.cfg.PushURL, "/"), p.account.ProjectID)
+	// POST https://push-api.cloud.huawei.com/v3/{projectId}/messages:send
+	pushURL := fmt.Sprintf("%s/v3/%s/messages:send", strings.TrimRight(p.cfg.PushURL, "/"), account.ProjectID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, pushURL, bytes.NewReader(body))
 	if err != nil {
 		result.Message = err.Error()
@@ -290,5 +308,68 @@ func parseHarmonyPrivateKey(value string) (*rsa.PrivateKey, error) {
 }
 
 func isHarmonyPushSuccess(code string) bool {
+	// 文档/现网常见成功码：0、80000000
 	return code == "0" || code == "80000000"
+}
+
+// 官方允许的 category 白名单（未申请权益时云端会当 MARKETING 处理，但必须是合法枚举）
+var harmonyAllowedCategories = map[string]struct{}{
+	HarmonyCategoryMarketing:    {},
+	HarmonyCategoryWork:         {},
+	HarmonyCategorySubscription: {},
+	HarmonyCategoryAccount:      {},
+	"IM":                        {},
+	"VOIP":                      {},
+	"MISS_CALL":                 {},
+	"TRAVEL":                    {},
+	"HEALTH":                    {},
+	"EXPRESS":                   {},
+	"FINANCE":                   {},
+	"DEVICE_REMINDER":           {},
+	"MAIL":                      {},
+	"PLAY_VOICE":                {},
+}
+
+func normalizeHarmonyCategory(category string) string {
+	value := strings.ToUpper(strings.TrimSpace(category))
+	if value == "" {
+		return HarmonyCategoryMarketing
+	}
+	// 纠正历史错误取值
+	switch value {
+	case "SYSTEM_REMINDER":
+		return HarmonyCategoryWork
+	case "SOCIAL_DYNAMICS":
+		return HarmonyCategorySubscription
+	}
+	if _, ok := harmonyAllowedCategories[value]; ok {
+		return value
+	}
+	return HarmonyCategoryMarketing
+}
+
+func buildHarmonyClickData(payload PushPayload) map[string]string {
+	data := map[string]string{}
+	if payload.MessageID > 0 {
+		data["messageId"] = fmt.Sprintf("%d", payload.MessageID)
+	}
+	// activityId=0 时不下发，避免客户端误跳转到无效详情
+	if payload.ActivityID > 0 {
+		data["activityId"] = fmt.Sprintf("%d", payload.ActivityID)
+	}
+	if messageType := strings.TrimSpace(payload.MessageType); messageType != "" {
+		data["type"] = messageType
+	}
+	if len(data) == 0 {
+		return nil
+	}
+	return data
+}
+
+func buildHarmonyNotifyID(messageID int64) *int {
+	if messageID <= 0 || messageID > harmonyMaxNotifyID {
+		return nil
+	}
+	value := int(messageID)
+	return &value
 }

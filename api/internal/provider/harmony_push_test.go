@@ -76,6 +76,9 @@ func TestHarmonyPusherSendsNotification(t *testing.T) {
 		if r.Header.Get("push-type") != harmonyPushTypeNotification {
 			t.Errorf("push-type = %s", r.Header.Get("push-type"))
 		}
+		if ct := r.Header.Get("Content-Type"); !strings.Contains(ct, "application/json") {
+			t.Errorf("Content-Type = %s", ct)
+		}
 		body, readErr := io.ReadAll(r.Body)
 		if readErr != nil {
 			t.Errorf("io.ReadAll() error = %v", readErr)
@@ -84,8 +87,26 @@ func TestHarmonyPusherSendsNotification(t *testing.T) {
 		if err := json.Unmarshal(body, &request); err != nil {
 			t.Errorf("json.Unmarshal() error = %v", err)
 		}
+		if request.Payload.Notification.Category != HarmonyCategoryWork {
+			t.Errorf("category = %s, want %s", request.Payload.Notification.Category, HarmonyCategoryWork)
+		}
+		if request.Payload.Notification.ClickAction.ActionType != 0 {
+			t.Errorf("actionType = %d", request.Payload.Notification.ClickAction.ActionType)
+		}
 		if request.Payload.Notification.ClickAction.Data["messageId"] != "88" {
 			t.Errorf("messageId = %s", request.Payload.Notification.ClickAction.Data["messageId"])
+		}
+		if request.Payload.Notification.ClickAction.Data["activityId"] != "99" {
+			t.Errorf("activityId = %s", request.Payload.Notification.ClickAction.Data["activityId"])
+		}
+		if request.Payload.Notification.ClickAction.Data["type"] != "activity_review" {
+			t.Errorf("type = %s", request.Payload.Notification.ClickAction.Data["type"])
+		}
+		if request.Payload.Notification.NotifyID == nil || *request.Payload.Notification.NotifyID != 88 {
+			t.Errorf("notifyId = %v, want 88", request.Payload.Notification.NotifyID)
+		}
+		if request.PushOptions.TTL != harmonyPushTimeToLive {
+			t.Errorf("ttl = %d, want %d", request.PushOptions.TTL, harmonyPushTimeToLive)
 		}
 		if !bytes.Contains(body, []byte(`"foregroundShow":false`)) {
 			t.Errorf("request does not disable foreground display: %s", string(body))
@@ -107,7 +128,7 @@ func TestHarmonyPusherSendsNotification(t *testing.T) {
 		Title:            "活动通知",
 		Alert:            "活动已通过审核",
 		MessageType:      "activity_review",
-		Category:         HarmonyCategorySystemReminder,
+		Category:         HarmonyCategoryWork,
 		MessageID:        88,
 		ActivityID:       99,
 	})
@@ -116,6 +137,39 @@ func TestHarmonyPusherSendsNotification(t *testing.T) {
 	}
 	if !result.Triggered || !result.Success {
 		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestNormalizeHarmonyCategory(t *testing.T) {
+	cases := map[string]string{
+		"":                 HarmonyCategoryMarketing,
+		"SYSTEM_REMINDER":  HarmonyCategoryWork,
+		"SOCIAL_DYNAMICS":  HarmonyCategorySubscription,
+		"work":             HarmonyCategoryWork,
+		"MARKETING":        HarmonyCategoryMarketing,
+		"NOT_A_REAL_TYPE":  HarmonyCategoryMarketing,
+	}
+	for input, want := range cases {
+		if got := normalizeHarmonyCategory(input); got != want {
+			t.Errorf("normalizeHarmonyCategory(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestBuildHarmonyClickDataOmitsZeroActivityID(t *testing.T) {
+	data := buildHarmonyClickData(PushPayload{
+		MessageID:   12,
+		ActivityID:  0,
+		MessageType: "system",
+	})
+	if data["messageId"] != "12" {
+		t.Fatalf("messageId = %s", data["messageId"])
+	}
+	if _, ok := data["activityId"]; ok {
+		t.Fatalf("activityId should be omitted when zero, got %v", data["activityId"])
+	}
+	if data["type"] != "system" {
+		t.Fatalf("type = %s", data["type"])
 	}
 }
 
