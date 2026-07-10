@@ -281,14 +281,11 @@ func (h *Handler) bindPushRegistration(c *gin.Context) {
 	if req.HarmonyPushToken != nil {
 		harmonyToken = strings.TrimSpace(*req.HarmonyPushToken)
 	}
-	// 调试阶段完整打印 token，便于核对 App 是否正确上报
 	logger.Infof(
-		"收到 push registration 绑定请求: user_id=%d, platform=%s, registration_id=%s, registration_id_len=%d, harmony_push_token=%s, harmony_token_len=%d",
+		"收到 push registration 绑定请求: user_id=%d, platform=%s, registration_id_len=%d, harmony_token_len=%d",
 		userID,
 		stringValue(req.Platform),
-		registrationID,
 		len(registrationID),
-		harmonyToken,
 		len(harmonyToken),
 	)
 	err := h.service.BindPushRegistration(c.Request.Context(), userID, PushRegistrationUpdate{
