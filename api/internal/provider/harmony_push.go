@@ -239,9 +239,15 @@ func (p *HarmonyPusher) authorizationToken() (string, error) {
 
 func (p *HarmonyPusher) serviceAccount() (harmonyServiceAccount, error) {
 	p.accountOnce.Do(func() {
+		// 对齐文档：从 AGC 服务账号 JSON 读取 project_id / key_id / private_key / sub_account / token_uri
+		// https://developer.huawei.com/consumer/cn/doc/harmonyos-guides/push-jwt-token
+		if strings.TrimSpace(p.cfg.ServiceAccountFile) == "" {
+			p.accountErr = errors.New("鸿蒙 Service Account 文件未配置，请设置 HARMONY_PUSH_SERVICE_ACCOUNT_FILE")
+			return
+		}
 		body, err := os.ReadFile(p.cfg.ServiceAccountFile)
 		if err != nil {
-			p.accountErr = fmt.Errorf("读取鸿蒙 Service Account 失败: %w", err)
+			p.accountErr = fmt.Errorf("读取鸿蒙 Service Account 失败(%s): %w", p.cfg.ServiceAccountFile, err)
 			return
 		}
 		if err := json.Unmarshal(body, &p.account); err != nil {
@@ -251,12 +257,24 @@ func (p *HarmonyPusher) serviceAccount() (harmonyServiceAccount, error) {
 		if strings.TrimSpace(p.account.ProjectID) == "" || strings.TrimSpace(p.account.KeyID) == "" ||
 			strings.TrimSpace(p.account.PrivateKey) == "" || strings.TrimSpace(p.account.SubAccount) == "" ||
 			strings.TrimSpace(p.account.TokenURI) == "" {
-			p.accountErr = errors.New("鸿蒙 Service Account 配置不完整")
+			p.accountErr = errors.New("鸿蒙 Service Account 配置不完整，需包含 project_id/key_id/private_key/sub_account/token_uri")
+			return
 		}
+		logger.Infof(
+			"鸿蒙 Service Account 已加载: project_id=%s, key_id=%s, sub_account=%s, token_uri=%s",
+			p.account.ProjectID,
+			p.account.KeyID,
+			p.account.SubAccount,
+			p.account.TokenURI,
+		)
 	})
 	return p.account, p.accountErr
 }
 
+// 按华为文档签发 JWT：
+// Header: alg=PS256, kid=key_id, typ=JWT
+// Payload: iss=sub_account, aud=token_uri, iat, exp（有效期 1 小时）
+// Signature: SHA256withRSA/PSS
 func signHarmonyJWT(account harmonyServiceAccount, issuedAt int64, expiresAt int64) (string, error) {
 	header, err := json.Marshal(map[string]interface{}{
 		"alg": "PS256",
@@ -290,6 +308,23 @@ func signHarmonyJWT(account harmonyServiceAccount, issuedAt int64, expiresAt int
 		return "", fmt.Errorf("签发鸿蒙 JWT 失败: %w", err)
 	}
 	return signingInput + "." + encode(signature), nil
+}
+
+// ValidateServiceAccount 启动时预检：文件可读、字段完整、私钥可解析
+func (p *HarmonyPusher) ValidateServiceAccount() error {
+	account, err := p.serviceAccount()
+	if err != nil {
+		return err
+	}
+	if _, err := parseHarmonyPrivateKey(account.PrivateKey); err != nil {
+		return err
+	}
+	// 试签一次，确认 PS256 可用
+	now := time.Now().Unix()
+	if _, err := signHarmonyJWT(account, now, now+3600); err != nil {
+		return err
+	}
+	return nil
 }
 
 func parseHarmonyPrivateKey(value string) (*rsa.PrivateKey, error) {

@@ -58,8 +58,10 @@ func main() {
 	harmonyPusher := provider.NewHarmonyPusher(cfg.HarmonyPush)
 	if cfg.HarmonyPush.ServiceAccountFile == "" {
 		logger.Warnf("鸿蒙推送未配置：请在 .env 设置 HARMONY_PUSH_SERVICE_ACCOUNT_FILE 为 AGC 服务账号 JSON 绝对路径")
+	} else if err := harmonyPusher.ValidateServiceAccount(); err != nil {
+		logger.Warnf("鸿蒙推送 Service Account 预检失败: %v", err)
 	} else {
-		logger.Infof("鸿蒙推送 Service Account 路径: %s", cfg.HarmonyPush.ServiceAccountFile)
+		logger.Infof("鸿蒙推送 Service Account 预检通过: %s", cfg.HarmonyPush.ServiceAccountFile)
 	}
 	pushSender := provider.NewDualChannelPusher(jpushPusher, harmonyPusher)
 	smsSender := provider.NewAliyunSMSSender(aliyunClient, cfg.Aliyun.SMS)

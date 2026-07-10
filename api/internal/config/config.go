@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -107,7 +108,9 @@ type QiniuConfig struct {
 }
 
 func Load() Config {
-	_ = godotenv.Load()
+	// 优先加载当前目录 / api 目录下的 .env，兼容从仓库根或 api 目录启动
+	_ = godotenv.Load(".env")
+	_ = godotenv.Load("api/.env")
 
 	return Config{
 		App: AppConfig{
@@ -166,9 +169,13 @@ func Load() Config {
 			PrivateKey:   normalizePrivateKey(getEnv("JIGUANG_PRIVATE_KEY", "")),
 		},
 		HarmonyPush: HarmonyPushConfig{
-			ServiceAccountFile: getEnv("HARMONY_PUSH_SERVICE_ACCOUNT_FILE", ""),
-			PushURL:            getEnv("HARMONY_PUSH_URL", "https://push-api.cloud.huawei.com"),
-			TestMessage:        getBoolEnv("HARMONY_PUSH_TEST_MESSAGE", false),
+			// 默认放在项目内 secrets/，避免机器路径漂移导致本地文件丢失
+			ServiceAccountFile: resolveFilePath(getEnv(
+				"HARMONY_PUSH_SERVICE_ACCOUNT_FILE",
+				"secrets/harmony-push-service-account.json",
+			)),
+			PushURL:     getEnv("HARMONY_PUSH_URL", "https://push-api.cloud.huawei.com"),
+			TestMessage: getBoolEnv("HARMONY_PUSH_TEST_MESSAGE", false),
 		},
 		Qiniu: QiniuConfig{
 			AccessKey: getEnv("QINIU_ACCESS_KEY", ""),
@@ -181,6 +188,56 @@ func Load() Config {
 
 func normalizePrivateKey(value string) string {
 	return strings.ReplaceAll(strings.TrimSpace(value), `\n`, "\n")
+}
+
+// resolveFilePath 将相对路径解析为绝对路径。
+// 密钥默认放在 api/secrets/ 下；从仓库根、api 目录或子包启动都能找到。
+func resolveFilePath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	if filepath.IsAbs(path) {
+		return path
+	}
+
+	var searchRoots []string
+	if wd, err := os.Getwd(); err == nil {
+		// 从当前目录一路向上查找（最多 6 层），覆盖 go test 在子包目录启动的情况
+		dir := wd
+		for i := 0; i < 6; i++ {
+			searchRoots = append(searchRoots, dir, filepath.Join(dir, "api"))
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+	searchRoots = append(searchRoots, ".", "api")
+
+	seen := map[string]struct{}{}
+	for _, root := range searchRoots {
+		candidate := filepath.Join(root, path)
+		abs, err := filepath.Abs(candidate)
+		if err != nil {
+			continue
+		}
+		if _, ok := seen[abs]; ok {
+			continue
+		}
+		seen[abs] = struct{}{}
+		if info, err := os.Stat(abs); err == nil && !info.IsDir() {
+			return abs
+		}
+	}
+
+	// 文件暂不存在时仍返回基于 cwd 的绝对路径，便于错误日志提示
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return abs
 }
 
 func getEnv(key string, fallback string) string {
