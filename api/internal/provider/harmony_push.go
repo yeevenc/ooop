@@ -115,8 +115,9 @@ func (p *HarmonyPusher) Push(ctx context.Context, payload PushPayload) (PushChan
 		result.Message = "鸿蒙 Push Token 未绑定"
 		return result, nil
 	}
+	logger.Infof("鸿蒙推送准备发送: message_id=%d, token_len=%d, token=%s", payload.MessageID, len(token), token)
 	if strings.TrimSpace(p.cfg.ServiceAccountFile) == "" {
-		err := errors.New("鸿蒙 Service Account 文件未配置")
+		err := errors.New("鸿蒙 Service Account 文件未配置，请设置环境变量 HARMONY_PUSH_SERVICE_ACCOUNT_FILE 指向 AGC 服务账号 JSON")
 		result.Message = err.Error()
 		return result, err
 	}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -272,11 +273,23 @@ func (h *Handler) bindPushRegistration(c *gin.Context) {
 	if !bindJSON(c, &req) {
 		return
 	}
+	registrationID := ""
+	if req.RegistrationID != nil {
+		registrationID = strings.TrimSpace(*req.RegistrationID)
+	}
+	harmonyToken := ""
+	if req.HarmonyPushToken != nil {
+		harmonyToken = strings.TrimSpace(*req.HarmonyPushToken)
+	}
+	// 调试阶段完整打印 token，便于核对 App 是否正确上报
 	logger.Infof(
-		"收到 push registration 绑定请求: user_id=%d, registration_id_updated=%t, harmony_token_updated=%t",
+		"收到 push registration 绑定请求: user_id=%d, platform=%s, registration_id=%s, registration_id_len=%d, harmony_push_token=%s, harmony_token_len=%d",
 		userID,
-		req.RegistrationID != nil,
-		req.HarmonyPushToken != nil,
+		stringValue(req.Platform),
+		registrationID,
+		len(registrationID),
+		harmonyToken,
+		len(harmonyToken),
 	)
 	err := h.service.BindPushRegistration(c.Request.Context(), userID, PushRegistrationUpdate{
 		Platform:         req.Platform,
