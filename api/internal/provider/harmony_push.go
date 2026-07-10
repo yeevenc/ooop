@@ -132,7 +132,7 @@ func (p *HarmonyPusher) Push(ctx context.Context, payload PushPayload) (PushChan
 		result.Message = err.Error()
 		return result, err
 	}
-
+	// 确保 jwt 可用（serviceAccount 会触发一次加载）
 	// 确保 project_id 已加载（authorizationToken 会触发 serviceAccount）
 	account, err := p.serviceAccount()
 	if err != nil {
