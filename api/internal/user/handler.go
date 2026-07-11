@@ -33,10 +33,10 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	authGroup.POST("/check-code", h.checkCode)
 	authGroup.POST("/mobile-code-login", h.mobileCodeLogin)
 	authGroup.POST("/password-login", h.passwordLogin)
-	authGroup.POST("/set-password", auth.Middleware(h.tokenManager), h.setPassword)
+	authGroup.POST("/set-password", auth.Middleware(h.tokenManager, h.service), h.setPassword)
 
 	userGroup := api.Group("/user")
-	userGroup.Use(auth.Middleware(h.tokenManager))
+	userGroup.Use(auth.Middleware(h.tokenManager, h.service))
 	userGroup.GET("/profile", h.profile)
 	userGroup.PUT("/profile", h.updateProfile)
 	userGroup.GET("/settings", h.settings)
@@ -372,8 +372,11 @@ func writeServiceResult(c *gin.Context, data interface{}, err error) {
 		httpx.Fail(c, http.StatusServiceUnavailable, 503001, contentmoderation.ErrUnavailable.Error())
 	case errors.Is(err, ErrInvalidAccount):
 		httpx.Fail(c, http.StatusUnauthorized, 401003, err.Error())
-	case errors.Is(err, ErrDisabledUser):
-		httpx.Fail(c, http.StatusForbidden, 403001, err.Error())
+	case errors.Is(err, ErrDisabledUser), errors.Is(err, auth.ErrAccountBanned):
+		// APP 封禁专用码，客户端据此展示封禁页
+		httpx.Fail(c, http.StatusForbidden, auth.CodeAccountBanned, err.Error())
+	case errors.Is(err, ErrInvalidBan):
+		httpx.Fail(c, http.StatusBadRequest, 400002, err.Error())
 	case errors.Is(err, ErrNotFound):
 		httpx.Fail(c, http.StatusNotFound, 404001, "用户不存在")
 	case errors.Is(err, auth.ErrInvalidToken),

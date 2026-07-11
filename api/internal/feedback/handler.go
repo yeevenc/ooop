@@ -16,18 +16,20 @@ type Handler struct {
 	service           *Service
 	tokenManager      *auth.TokenManager
 	adminTokenManager *auth.TokenManager
+	access            auth.AccessChecker
 }
 
-func NewHandler(service *Service, tokenManager *auth.TokenManager, adminTokenManager *auth.TokenManager) *Handler {
+func NewHandler(service *Service, tokenManager *auth.TokenManager, adminTokenManager *auth.TokenManager, access auth.AccessChecker) *Handler {
 	return &Handler{
 		service:           service,
 		tokenManager:      tokenManager,
 		adminTokenManager: adminTokenManager,
+		access:            access,
 	}
 }
 
 func (h *Handler) Register(api *gin.RouterGroup) {
-	group := api.Group("/feedbacks", auth.Middleware(h.tokenManager))
+	group := api.Group("/feedbacks", auth.Middleware(h.tokenManager, h.access))
 	group.POST("", h.create)
 
 	adminGroup := api.Group("/admin/feedbacks", admin.Middleware(h.adminTokenManager))

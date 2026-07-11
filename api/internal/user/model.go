@@ -7,7 +7,13 @@ import (
 )
 
 const (
-	UserStatusEnabled = 1
+	// UserStatusDisabled / UserStatusEnabled：APP 用户账号状态（非后台管理员）
+	UserStatusDisabled = 0 // 封禁
+	UserStatusEnabled  = 1 // 正常
+
+	// 封禁类型：永久 / 限时（限时需配合 banned_until）
+	BanTypePermanent = "permanent"
+	BanTypeTemporary = "temporary"
 
 	RegisterSourceAliyunMobile  = "aliyun_mobile"
 	RegisterSourceJiguangMobile = "jiguang_mobile"
@@ -41,12 +47,17 @@ type User struct {
 	IDCardMask           string     `gorm:"size:32;not null;default:''" json:"id_card_mask"`
 	RealNameVerified     bool       `gorm:"column:is_real_name_verified;not null;default:false" json:"is_real_name_verified"`
 	RealNameVerifiedAt   *time.Time `json:"real_name_verified_at"`
-	Status               int        `gorm:"not null;default:1" json:"status"`
-	CreditScore          int        `gorm:"not null;default:100" json:"credit_score"` // 靠谱值（满分 100，评分逻辑后续接入）
-	RegisterSource       string     `gorm:"size:32;not null" json:"register_source"`
-	LastLoginAt          *time.Time `json:"last_login_at"`
-	CreatedAt            time.Time  `json:"created_at"`
-	UpdatedAt            time.Time  `json:"updated_at"`
+	// Status 1=正常 0=封禁；封禁后 APP 登录与鉴权均拦截（业务码 403002）
+	Status int `gorm:"not null;default:1" json:"status"`
+	// BannedUntil 限时解封时间；status=0 且为 nil=永久封禁；到期后鉴权时自动解封
+	BannedUntil *time.Time `gorm:"column:banned_until" json:"banned_until"`
+	// BanReason 封禁原因备注（可选，可透出给 APP 提示文案）
+	BanReason string `gorm:"size:255;not null;default:''" json:"ban_reason"`
+	CreditScore    int        `gorm:"not null;default:100" json:"credit_score"` // 靠谱值（满分 100，评分逻辑后续接入）
+	RegisterSource string     `gorm:"size:32;not null" json:"register_source"`
+	LastLoginAt    *time.Time `json:"last_login_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 type LoginCode struct {
@@ -79,6 +90,8 @@ type PublicUser struct {
 	RealNameVerified     bool                 `json:"is_real_name_verified"`
 	RealNameVerifiedAt   *time.Time           `json:"real_name_verified_at"`
 	Status               int                  `json:"status"`
+	BannedUntil          *time.Time           `json:"banned_until"`
+	BanReason            string               `json:"ban_reason"`
 	CreditScore          int                  `json:"credit_score"`
 	RegisterSource       string               `json:"register_source"`
 	HasPassword          bool                 `json:"has_password"`
@@ -110,6 +123,8 @@ func ToPublicUser(item User) PublicUser {
 		RealNameVerified:     item.RealNameVerified,
 		RealNameVerifiedAt:   item.RealNameVerifiedAt,
 		Status:               item.Status,
+		BannedUntil:          item.BannedUntil,
+		BanReason:            item.BanReason,
 		CreditScore:          item.CreditScore,
 		RegisterSource:       item.RegisterSource,
 		HasPassword:          item.PasswordHash != "",

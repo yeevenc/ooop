@@ -67,11 +67,10 @@ func main() {
 	pushSender := provider.NewDualChannelPusher(jpushPusher, harmonyPusher)
 	smsSender := provider.NewAliyunSMSSender(aliyunClient, cfg.Aliyun.SMS)
 	realNameVerifier := provider.NewAliyunIDCardVerifier(cfg.Aliyun.IDCard)
-	var contentReviewer contentmoderation.Reviewer
-	if cfg.Aliyun.ContentModeration.Enabled {
-		contentReviewer = provider.NewAliyunContentModerator(aliyunClient, cfg.Aliyun.ContentModeration)
+	contentChecker, err := contentmoderation.NewChecker(cfg.ContentModeration.BlockedWords)
+	if err != nil {
+		logger.Fatalf("敏感词过滤器初始化失败: %v", err)
 	}
-	contentChecker := contentmoderation.NewChecker(contentReviewer, cfg.Aliyun.ContentModeration.BlockedWords)
 
 	authService := user.NewAuthService(user.AuthServiceOptions{
 		Users:            userRepo,
@@ -113,10 +112,11 @@ func main() {
 	legal.NewHandler().Register(router)
 
 	api := router.Group("/api/v1")
+	// APP 鉴权统一注入 authService：封禁用户（含已登录）返回 403002，不落业务逻辑
 	user.NewHandler(authService, tokenManager).Register(api)
-	activity.NewHandler(activityService, tokenManager).Register(api)
-	message.NewHandler(messageService, tokenManager).Register(api)
-	feedback.NewHandler(feedbackService, tokenManager, adminTokenManager).Register(api)
+	activity.NewHandler(activityService, tokenManager, authService).Register(api)
+	message.NewHandler(messageService, tokenManager, authService).Register(api)
+	feedback.NewHandler(feedbackService, tokenManager, adminTokenManager, authService).Register(api)
 	upload.NewHandlerWithConfig(cfg.Qiniu).Register(api)
 	admin.NewHandler(adminService, authService, activityService, adminTokenManager).Register(api)
 

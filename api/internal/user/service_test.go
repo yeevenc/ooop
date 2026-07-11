@@ -697,6 +697,21 @@ func (r *memoryUserRepository) UpdatePushRegistration(ctx context.Context, id in
 	return nil
 }
 
+func (r *memoryUserRepository) UpdateBanStatus(ctx context.Context, id int64, status int, bannedUntil *time.Time, banReason string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	item, ok := r.items[id]
+	if !ok {
+		return ErrNotFound
+	}
+	item.Status = status
+	item.BannedUntil = bannedUntil
+	item.BanReason = banReason
+	item.UpdatedAt = time.Now()
+	r.items[id] = item
+	return nil
+}
+
 func (r *memoryUserRepository) UpdateRealNameVerification(ctx context.Context, id int64, realName string, idCardMask string, gender string, verifiedAt time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -18,6 +18,7 @@ import (
 type Handler struct {
 	service      *Service
 	tokenManager *auth.TokenManager
+	access       auth.AccessChecker
 }
 
 type createRequest struct {
@@ -40,8 +41,12 @@ type createRequest struct {
 	ImageURLs         []string `json:"image_urls"`
 }
 
-func NewHandler(service *Service, tokenManager *auth.TokenManager) *Handler {
-	return &Handler{service: service, tokenManager: tokenManager}
+func NewHandler(service *Service, tokenManager *auth.TokenManager, access auth.AccessChecker) *Handler {
+	return &Handler{service: service, tokenManager: tokenManager, access: access}
+}
+
+func (h *Handler) appAuth() gin.HandlerFunc {
+	return auth.Middleware(h.tokenManager, h.access)
 }
 
 func (h *Handler) Register(api *gin.RouterGroup) {
@@ -50,27 +55,27 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	group := api.Group("/activities")
 	group.GET("", h.list)
 	group.GET("/:id", h.detail)
-	group.POST("", auth.Middleware(h.tokenManager), h.create)
-	group.PUT("/:id/favorite", auth.Middleware(h.tokenManager), h.favorite)
-	group.DELETE("/:id/favorite", auth.Middleware(h.tokenManager), h.unfavorite)
+	group.POST("", h.appAuth(), h.create)
+	group.PUT("/:id/favorite", h.appAuth(), h.favorite)
+	group.DELETE("/:id/favorite", h.appAuth(), h.unfavorite)
 
 	// 用户维度的发布活动：他人主页（公开，仅 ongoing）、我的主页（鉴权，含审核中）
 	api.GET("/users/:id/activities", h.userActivities)
-	api.GET("/user/activities", auth.Middleware(h.tokenManager), h.myActivities)
-	api.GET("/user/favorite-activities", auth.Middleware(h.tokenManager), h.myFavorites)
+	api.GET("/user/activities", h.appAuth(), h.myActivities)
+	api.GET("/user/favorite-activities", h.appAuth(), h.myFavorites)
 
 	// 报名(参加)：报名 / 发起人查看 & 审核申请人
-	group.POST("/:id/join", auth.Middleware(h.tokenManager), h.join)
-	group.PUT("/:id/participation/cancel", auth.Middleware(h.tokenManager), h.cancelParticipation)
-	group.PUT("/:id/cancel", auth.Middleware(h.tokenManager), h.cancelOwnedActivity)
-	group.PUT("/:id/take-down", auth.Middleware(h.tokenManager), h.takeDownOwnedActivity)
-	group.DELETE("/:id", auth.Middleware(h.tokenManager), h.deleteOwnedActivity)
-	group.GET("/:id/my-participation", auth.Middleware(h.tokenManager), h.myParticipation)
-	group.GET("/:id/applicants", auth.Middleware(h.tokenManager), h.applicants)
-	group.PUT("/:id/applicants/:uid", auth.Middleware(h.tokenManager), h.reviewApplicant)
+	group.POST("/:id/join", h.appAuth(), h.join)
+	group.PUT("/:id/participation/cancel", h.appAuth(), h.cancelParticipation)
+	group.PUT("/:id/cancel", h.appAuth(), h.cancelOwnedActivity)
+	group.PUT("/:id/take-down", h.appAuth(), h.takeDownOwnedActivity)
+	group.DELETE("/:id", h.appAuth(), h.deleteOwnedActivity)
+	group.GET("/:id/my-participation", h.appAuth(), h.myParticipation)
+	group.GET("/:id/applicants", h.appAuth(), h.applicants)
+	group.PUT("/:id/applicants/:uid", h.appAuth(), h.reviewApplicant)
 
 	// 我参加的 / Ta 参加的活动
-	api.GET("/user/joined-activities", auth.Middleware(h.tokenManager), h.myJoined)
+	api.GET("/user/joined-activities", h.appAuth(), h.myJoined)
 	api.GET("/users/:id/joined-activities", h.userJoined)
 }
 

@@ -14,17 +14,19 @@ import (
 type Handler struct {
 	service      *Service
 	tokenManager *auth.TokenManager
+	access       auth.AccessChecker
 }
 
-func NewHandler(service *Service, tokenManager *auth.TokenManager) *Handler {
+func NewHandler(service *Service, tokenManager *auth.TokenManager, access auth.AccessChecker) *Handler {
 	return &Handler{
 		service:      service,
 		tokenManager: tokenManager,
+		access:       access,
 	}
 }
 
 func (h *Handler) Register(api *gin.RouterGroup) {
-	group := api.Group("/messages", auth.Middleware(h.tokenManager))
+	group := api.Group("/messages", auth.Middleware(h.tokenManager, h.access))
 	group.GET("", h.list)
 	group.PUT("/read-all", h.markAllRead)
 	group.PUT("/:id/read", h.markRead)

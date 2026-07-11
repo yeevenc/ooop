@@ -11,15 +11,16 @@ import (
 )
 
 type Config struct {
-	App         AppConfig
-	HTTP        HTTPConfig
-	Database    DatabaseConfig
-	JWT         JWTConfig
-	Auth        AuthConfig
-	Aliyun      AliyunConfig
-	Jiguang     JiguangConfig
-	HarmonyPush HarmonyPushConfig
-	Qiniu       QiniuConfig
+	App               AppConfig
+	HTTP              HTTPConfig
+	Database          DatabaseConfig
+	JWT               JWTConfig
+	Auth              AuthConfig
+	Aliyun            AliyunConfig
+	ContentModeration ContentModerationConfig
+	Jiguang           JiguangConfig
+	HarmonyPush       HarmonyPushConfig
+	Qiniu             QiniuConfig
 }
 
 type AppConfig struct {
@@ -53,20 +54,17 @@ type AuthConfig struct {
 }
 
 type AliyunConfig struct {
-	AccessKeyID       string
-	AccessKeySecret   string
-	Mobile            AliyunMobileConfig
-	SMS               AliyunSMSConfig
-	IDCard            AliyunIDCardConfig
-	ContentModeration AliyunContentModerationConfig
+	AccessKeyID     string
+	AccessKeySecret string
+	Mobile          AliyunMobileConfig
+	SMS             AliyunSMSConfig
+	IDCard          AliyunIDCardConfig
 }
 
-type AliyunContentModerationConfig struct {
-	Enabled         bool
-	Endpoint        string
-	NicknameService string
-	ContentService  string
-	BlockedWords    []string
+// ContentModerationConfig 本地敏感词配置（免费开源词库 + 自定义词）。
+type ContentModerationConfig struct {
+	// BlockedWords 额外禁用词，英文逗号分隔配置后解析
+	BlockedWords []string
 }
 
 type AliyunMobileConfig struct {
@@ -169,13 +167,10 @@ func Load() Config {
 				AppKey:    getEnv("ALIYUN_ID_CARD_APP_KEY", ""),
 				AppSecret: getEnv("ALIYUN_ID_CARD_APP_SECRET", ""),
 			},
-			ContentModeration: AliyunContentModerationConfig{
-				Enabled:         getBoolEnv("ALIYUN_CONTENT_MODERATION_ENABLED", false),
-				Endpoint:        getEnv("ALIYUN_CONTENT_MODERATION_ENDPOINT", "green-cip.cn-shanghai.aliyuncs.com"),
-				NicknameService: getEnv("ALIYUN_CONTENT_MODERATION_NICKNAME_SERVICE", "nickname_detection"),
-				ContentService:  getEnv("ALIYUN_CONTENT_MODERATION_CONTENT_SERVICE", "pgc_detection"),
-				BlockedWords:    getListEnv("CONTENT_MODERATION_BLOCKED_WORDS", ""),
-			},
+		},
+		ContentModeration: ContentModerationConfig{
+			// 自定义禁用词，英文逗号分隔；内置开源词库始终生效
+			BlockedWords: getListEnv("CONTENT_MODERATION_BLOCKED_WORDS", ""),
 		},
 		Jiguang: JiguangConfig{
 			AppKey:       getEnv("JIGUANG_APP_KEY", ""),

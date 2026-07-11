@@ -34,14 +34,6 @@ func NewAliyunRPCClient(accessKeyID string, accessKeySecret string) *AliyunRPCCl
 }
 
 func (c *AliyunRPCClient) Call(ctx context.Context, endpoint string, params map[string]string) (map[string]interface{}, error) {
-	return c.call(ctx, http.MethodGet, endpoint, params)
-}
-
-func (c *AliyunRPCClient) CallPOST(ctx context.Context, endpoint string, params map[string]string) (map[string]interface{}, error) {
-	return c.call(ctx, http.MethodPost, endpoint, params)
-}
-
-func (c *AliyunRPCClient) call(ctx context.Context, method string, endpoint string, params map[string]string) (map[string]interface{}, error) {
 	if c.accessKeyID == "" || c.accessKeySecret == "" {
 		return nil, errors.New("阿里云访问密钥未配置")
 	}
@@ -57,10 +49,10 @@ func (c *AliyunRPCClient) call(ctx context.Context, method string, endpoint stri
 	for key, value := range params {
 		values[key] = value
 	}
-	values["Signature"] = c.signatureWithMethod(method, values)
+	values["Signature"] = c.signature(values)
 
 	requestURL := "https://" + endpoint + "/?" + encodeQuery(values)
-	req, err := http.NewRequestWithContext(ctx, method, requestURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -91,9 +83,9 @@ func (c *AliyunRPCClient) call(ctx context.Context, method string, endpoint stri
 	return result, nil
 }
 
-func (c *AliyunRPCClient) signatureWithMethod(method string, values map[string]string) string {
+func (c *AliyunRPCClient) signature(values map[string]string) string {
 	canonicalized := encodeQuery(values)
-	stringToSign := method + "&%2F&" + percentEncode(canonicalized)
+	stringToSign := "GET&%2F&" + percentEncode(canonicalized)
 	mac := hmac.New(sha1.New, []byte(c.accessKeySecret+"&"))
 	mac.Write([]byte(stringToSign))
 	return base64.StdEncoding.EncodeToString(mac.Sum(nil))

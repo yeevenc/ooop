@@ -26,8 +26,10 @@ var (
 	ErrInvalidAccount   = errors.New("账号或密码错误")
 	ErrInvalidOldPass   = errors.New("当前密码不正确")
 	ErrInvalidCode      = errors.New("验证码错误或已过期")
-	ErrDisabledUser     = errors.New("账号已被禁用")
-	ErrPhoneExists      = errors.New("手机号已注册")
+	// ErrDisabledUser 与 auth.ErrAccountBanned 语义一致，供 errors.Is 识别封禁。
+	ErrDisabledUser = auth.ErrAccountBanned
+	ErrInvalidBan   = errors.New("封禁参数不正确")
+	ErrPhoneExists  = errors.New("手机号已注册")
 	ErrReservedUsername = errors.New("该用户名不可使用")
 	ErrInvalidProfile   = errors.New("资料字段不合法")
 	ErrInvalidRealName  = errors.New("实名信息格式不正确")
@@ -119,6 +121,17 @@ type ProfileUpdateInput struct {
 
 func (i ProfileUpdateInput) ToProfileUpdate() ProfileUpdate {
 	return ProfileUpdate(i)
+}
+
+// BanUserInput 后台封禁 APP 用户请求体。
+// 备注：仅影响 APP 端用户；后台管理员账号不受此接口控制。
+type BanUserInput struct {
+	// Type permanent=永久 temporary=限时
+	Type string `json:"type"`
+	// DurationHours 限时时长（小时）；由前端根据时间区间换算后传入，接口按 now+hours 写 banned_until
+	DurationHours int `json:"duration_hours"`
+	// Reason 封禁原因备注，可选，最长 200 字
+	Reason string `json:"reason"`
 }
 
 type PrivacySettingsUpdate struct {
@@ -302,8 +315,8 @@ func (s *AuthService) PasswordLogin(ctx context.Context, account string, passwor
 		}
 		return LoginResult{}, err
 	}
-	if item.Status != UserStatusEnabled {
-		return LoginResult{}, ErrDisabledUser
+	if err := s.ensureUserActive(ctx, &item); err != nil {
+		return LoginResult{}, err
 	}
 	if item.PasswordHash == "" || !s.passwordHasher.Compare(item.PasswordHash, password) {
 		return LoginResult{}, ErrInvalidAccount
@@ -652,8 +665,8 @@ func defaultNickname(userID int64) string {
 }
 
 func (s *AuthService) issueLoginResult(ctx context.Context, item User, meta ClientMeta) (LoginResult, error) {
-	if item.Status != UserStatusEnabled {
-		return LoginResult{}, ErrDisabledUser
+	if err := s.ensureUserActive(ctx, &item); err != nil {
+		return LoginResult{}, err
 	}
 
 	now := time.Now()
@@ -677,6 +690,101 @@ func (s *AuthService) issueLoginResult(ctx context.Context, item User, meta Clie
 		User:   ToPublicUser(item),
 		Tokens: tokens,
 	}, nil
+}
+
+// CheckAppUserAccess 供 APP 鉴权中间件调用。
+// 备注：已登录用户每次带 token 请求都会校验；限时封禁到期则自动恢复 status=1。
+func (s *AuthService) CheckAppUserAccess(ctx context.Context, userID int64) error {
+	if s == nil || s.users == nil {
+		return nil
+	}
+	item, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	return s.ensureUserActive(ctx, &item)
+}
+
+// ensureUserActive 校验用户可访问；限时封禁到期则自动解封。
+func (s *AuthService) ensureUserActive(ctx context.Context, item *User) error {
+	if item == nil {
+		return ErrNotFound
+	}
+	if item.Status == UserStatusEnabled {
+		return nil
+	}
+
+	now := time.Now()
+	// 限时封禁已到期：自动恢复
+	if item.BannedUntil != nil && !item.BannedUntil.After(now) {
+		if err := s.users.UpdateBanStatus(ctx, item.ID, UserStatusEnabled, nil, ""); err != nil {
+			return err
+		}
+		item.Status = UserStatusEnabled
+		item.BannedUntil = nil
+		item.BanReason = ""
+		return nil
+	}
+
+	msg := banDeniedMessage(*item)
+	return fmt.Errorf("%w：%s", ErrDisabledUser, msg)
+}
+
+func banDeniedMessage(item User) string {
+	if item.BannedUntil != nil {
+		until := item.BannedUntil.Local().Format("2006-01-02 15:04:05")
+		if reason := strings.TrimSpace(item.BanReason); reason != "" {
+			return fmt.Sprintf("限时封禁至 %s，原因：%s", until, reason)
+		}
+		return fmt.Sprintf("限时封禁至 %s", until)
+	}
+	if reason := strings.TrimSpace(item.BanReason); reason != "" {
+		return "永久封禁，原因：" + reason
+	}
+	return "永久封禁"
+}
+
+// BanUser 后台封禁 APP 用户。
+// 备注：永久=status=0 且 banned_until 为空；限时=status=0 且写入解封时间。
+func (s *AuthService) BanUser(ctx context.Context, userID int64, input BanUserInput) (PublicUser, error) {
+	banType := strings.TrimSpace(strings.ToLower(input.Type))
+	if banType != BanTypePermanent && banType != BanTypeTemporary {
+		return PublicUser{}, ErrInvalidBan
+	}
+
+	var bannedUntil *time.Time
+	if banType == BanTypeTemporary {
+		if input.DurationHours <= 0 {
+			return PublicUser{}, ErrInvalidBan
+		}
+		until := time.Now().Add(time.Duration(input.DurationHours) * time.Hour)
+		bannedUntil = &until
+	}
+
+	if _, err := s.users.FindByID(ctx, userID); err != nil {
+		return PublicUser{}, err
+	}
+
+	reason := strings.TrimSpace(input.Reason)
+	if utf8.RuneCountInString(reason) > 200 {
+		return PublicUser{}, ErrInvalidBan
+	}
+
+	if err := s.users.UpdateBanStatus(ctx, userID, UserStatusDisabled, bannedUntil, reason); err != nil {
+		return PublicUser{}, err
+	}
+	return s.Profile(ctx, userID)
+}
+
+// UnbanUser 后台手动解封 APP 用户（清空 banned_until / ban_reason，status 置为正常）。
+func (s *AuthService) UnbanUser(ctx context.Context, userID int64) (PublicUser, error) {
+	if _, err := s.users.FindByID(ctx, userID); err != nil {
+		return PublicUser{}, err
+	}
+	if err := s.users.UpdateBanStatus(ctx, userID, UserStatusEnabled, nil, ""); err != nil {
+		return PublicUser{}, err
+	}
+	return s.Profile(ctx, userID)
 }
 
 func (s *AuthService) hashCode(phone string, code string) string {

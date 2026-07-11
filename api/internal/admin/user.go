@@ -20,7 +20,11 @@ type AdminUserResponse struct {
 	IDCardMask         string     `json:"id_card_mask"`
 	RealNameVerified   bool       `json:"is_real_name_verified"`
 	RealNameVerifiedAt *AdminTime `json:"real_name_verified_at"`
-	Status             int        `json:"status"`
+	Status int `json:"status"` // 1 正常 / 0 封禁
+	// BannedUntil 限时解封时间；永久封禁时为 null
+	BannedUntil *AdminTime `json:"banned_until"`
+	// BanReason 封禁原因备注
+	BanReason string `json:"ban_reason"`
 	CreditScore        int        `json:"credit_score"`
 	RegisterSource     string     `json:"register_source"`
 	HasPassword        bool       `json:"has_password"`
@@ -51,6 +55,8 @@ func ToAdminUserResponse(u user.PublicUser) AdminUserResponse {
 		RealNameVerified:   u.RealNameVerified,
 		RealNameVerifiedAt: ToAdminTime(u.RealNameVerifiedAt),
 		Status:             u.Status,
+		BannedUntil:        ToAdminTime(u.BannedUntil),
+		BanReason:          u.BanReason,
 		CreditScore:        u.CreditScore,
 		RegisterSource:     u.RegisterSource,
 		HasPassword:        u.HasPassword,

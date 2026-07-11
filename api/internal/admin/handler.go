@@ -39,6 +39,10 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	protected.GET("/users", h.userList)
 	protected.GET("/users/:id", h.userDetail)
 	protected.PUT("/users/:id", h.updateUser)
+	// APP 用户封禁/解封（仅操作 users 表，与 admin_users 无关）
+	// 封禁后 APP 登录与鉴权返回 code=403002
+	protected.PUT("/users/:id/ban", h.banUser)
+	protected.PUT("/users/:id/unban", h.unbanUser)
 
 	// 活动分类管理
 	protected.GET("/activity-categories", h.categoryList)
@@ -116,7 +120,49 @@ func (h *Handler) updateUser(c *gin.Context) {
 	}
 
 	result, err := h.appUsers.UpdateProfile(c.Request.Context(), id, req.ToProfileUpdate())
-	writeResult(c, result, err)
+	if err != nil {
+		writeResult(c, nil, err)
+		return
+	}
+	writeResult(c, ToAdminUserResponse(result), nil)
+}
+
+// banUser 封禁 APP 用户。
+// 备注：body.type=permanent|temporary；限时需 duration_hours（前端按时间区间换算）。
+func (h *Handler) banUser(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		httpx.Fail(c, http.StatusBadRequest, 400001, "用户 ID 格式不正确")
+		return
+	}
+
+	var req user.BanUserInput
+	if !bindJSON(c, &req) {
+		return
+	}
+
+	result, err := h.appUsers.BanUser(c.Request.Context(), id, req)
+	if err != nil {
+		writeResult(c, nil, err)
+		return
+	}
+	writeResult(c, ToAdminUserResponse(result), nil)
+}
+
+// unbanUser 解封 APP 用户。
+func (h *Handler) unbanUser(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		httpx.Fail(c, http.StatusBadRequest, 400001, "用户 ID 格式不正确")
+		return
+	}
+
+	result, err := h.appUsers.UnbanUser(c.Request.Context(), id)
+	if err != nil {
+		writeResult(c, nil, err)
+		return
+	}
+	writeResult(c, ToAdminUserResponse(result), nil)
 }
 
 func (h *Handler) userDetail(c *gin.Context) {
@@ -172,7 +218,7 @@ func writeResult(c *gin.Context, data interface{}, err error) {
 		httpx.Fail(c, http.StatusUnprocessableEntity, 422001, err.Error())
 	case errors.Is(err, contentmoderation.ErrUnavailable):
 		httpx.Fail(c, http.StatusServiceUnavailable, 503001, contentmoderation.ErrUnavailable.Error())
-	case errors.Is(err, user.ErrInvalidProfile):
+	case errors.Is(err, user.ErrInvalidProfile), errors.Is(err, user.ErrInvalidBan):
 		httpx.Fail(c, http.StatusBadRequest, 400002, err.Error())
 	case errors.Is(err, user.ErrNotFound):
 		httpx.Fail(c, http.StatusNotFound, 404001, "用户不存在")
