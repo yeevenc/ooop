@@ -20,6 +20,8 @@ export interface UserItem {
   device_no: string
   push_platform: string
   registration_id: string
+  /** 是否已实名认证 */
+  is_real_name_verified: boolean
   /** 1 正常 / 0 封禁（APP 用户） */
   status: number
   /** 限时解封时间；永久封禁为 null */

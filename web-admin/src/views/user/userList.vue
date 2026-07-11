@@ -261,7 +261,7 @@ onMounted(() => {
           <el-input
             v-model="queryForm.keyword"
             clearable
-            placeholder="手机号 / 用户名 / 昵称"
+            placeholder="手机号 / 昵称"
             @clear="handleSearch"
             @keyup.enter="handleSearch"
           />
@@ -297,11 +297,6 @@ onMounted(() => {
       >
         <el-table-column prop="id" label="ID" width="90" fixed="left" />
         <el-table-column prop="phone" label="手机号" min-width="140" />
-        <el-table-column prop="username" label="用户名" min-width="140">
-          <template #default="{ row }">
-            {{ row.username || '-' }}
-          </template>
-        </el-table-column>
         <el-table-column prop="nickname" label="昵称" min-width="140">
           <template #default="{ row }">
             {{ row.nickname || '-' }}
@@ -338,6 +333,23 @@ onMounted(() => {
         <el-table-column prop="platform" label="平台" width="100">
           <template #default="{ row }">
             {{ row.platform || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="is_real_name_verified" label="是否实名" width="110">
+          <template #default="{ row }">
+            <el-tag :type="row.is_real_name_verified ? 'success' : 'info'">
+              {{ row.is_real_name_verified ? '已实名' : '未实名' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column
+          prop="registration_id"
+          label="Registration ID"
+          min-width="220"
+          show-overflow-tooltip
+        >
+          <template #default="{ row }">
+            {{ row.registration_id || '-' }}
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="110">
