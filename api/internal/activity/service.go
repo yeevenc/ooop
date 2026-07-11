@@ -12,6 +12,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"ooop-admin-api/internal/contentmoderation"
 	"ooop-admin-api/internal/logger"
 	"ooop-admin-api/internal/provider"
 	"ooop-admin-api/internal/user"
@@ -84,6 +85,7 @@ type Service struct {
 	activities     Repository
 	users          user.UserRepository
 	reviewNotifier ReviewNotifier
+	contentChecker *contentmoderation.Checker
 }
 
 type ReviewNotifier interface {
@@ -124,10 +126,15 @@ var DefaultCategories = []ActivityCategory{
 	{ID: "movie", Label: "电影", Sort: 100, Status: CategoryEnabled},
 }
 
-func NewService(activities Repository, users user.UserRepository) *Service {
+func NewService(activities Repository, users user.UserRepository, checkers ...*contentmoderation.Checker) *Service {
+	var checker *contentmoderation.Checker
+	if len(checkers) > 0 {
+		checker = checkers[0]
+	}
 	return &Service{
-		activities: activities,
-		users:      users,
+		activities:     activities,
+		users:          users,
+		contentChecker: checker,
 	}
 }
 
@@ -138,6 +145,9 @@ func (s *Service) SetReviewNotifier(notifier ReviewNotifier) {
 func (s *Service) Create(ctx context.Context, userID int64, input CreateInput) (PublicActivity, error) {
 	item, err := input.toModel(userID)
 	if err != nil {
+		return PublicActivity{}, err
+	}
+	if err := s.checkActivityContent(ctx, item.Title, item.Intro, item.Notice); err != nil {
 		return PublicActivity{}, err
 	}
 
@@ -843,6 +853,9 @@ func (s *Service) UpdateActivity(ctx context.Context, id int64, input AdminActiv
 	if input.TotalCount < 2 {
 		return PublicActivity{}, ErrInvalidCount
 	}
+	if err := s.checkActivityContent(ctx, title, intro, input.Notice); err != nil {
+		return PublicActivity{}, err
+	}
 
 	category, err := s.activities.FindCategory(ctx, categoryID)
 	if err != nil {
@@ -870,6 +883,14 @@ func (s *Service) UpdateActivity(ctx context.Context, id int64, input AdminActiv
 		return PublicActivity{}, err
 	}
 	return s.toPublic(ctx, item), nil
+}
+
+func (s *Service) checkActivityContent(ctx context.Context, title, intro, notice string) error {
+	return s.contentChecker.Check(ctx, contentmoderation.SceneContent,
+		contentmoderation.Field{Name: "活动标题", Content: title},
+		contentmoderation.Field{Name: "活动简介", Content: intro},
+		contentmoderation.Field{Name: "注意事项", Content: notice},
+	)
 }
 
 func (s *Service) DeleteActivity(ctx context.Context, id int64) error {

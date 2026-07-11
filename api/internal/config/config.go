@@ -53,11 +53,20 @@ type AuthConfig struct {
 }
 
 type AliyunConfig struct {
-	AccessKeyID     string
-	AccessKeySecret string
-	Mobile          AliyunMobileConfig
-	SMS             AliyunSMSConfig
-	IDCard          AliyunIDCardConfig
+	AccessKeyID       string
+	AccessKeySecret   string
+	Mobile            AliyunMobileConfig
+	SMS               AliyunSMSConfig
+	IDCard            AliyunIDCardConfig
+	ContentModeration AliyunContentModerationConfig
+}
+
+type AliyunContentModerationConfig struct {
+	Enabled         bool
+	Endpoint        string
+	NicknameService string
+	ContentService  string
+	BlockedWords    []string
 }
 
 type AliyunMobileConfig struct {
@@ -159,6 +168,13 @@ func Load() Config {
 				AppCode:   getEnv("ALIYUN_ID_CARD_APP_CODE", ""),
 				AppKey:    getEnv("ALIYUN_ID_CARD_APP_KEY", ""),
 				AppSecret: getEnv("ALIYUN_ID_CARD_APP_SECRET", ""),
+			},
+			ContentModeration: AliyunContentModerationConfig{
+				Enabled:         getBoolEnv("ALIYUN_CONTENT_MODERATION_ENABLED", false),
+				Endpoint:        getEnv("ALIYUN_CONTENT_MODERATION_ENDPOINT", "green-cip.cn-shanghai.aliyuncs.com"),
+				NicknameService: getEnv("ALIYUN_CONTENT_MODERATION_NICKNAME_SERVICE", "nickname_detection"),
+				ContentService:  getEnv("ALIYUN_CONTENT_MODERATION_CONTENT_SERVICE", "pgc_detection"),
+				BlockedWords:    getListEnv("CONTENT_MODERATION_BLOCKED_WORDS", ""),
 			},
 		},
 		Jiguang: JiguangConfig{

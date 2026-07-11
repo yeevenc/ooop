@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"ooop-admin-api/internal/auth"
+	"ooop-admin-api/internal/contentmoderation"
 	"ooop-admin-api/internal/httpx"
 )
 
@@ -467,6 +468,10 @@ func writeResult(c *gin.Context, data interface{}, err error) {
 		httpx.Fail(c, http.StatusNotFound, 404001, err.Error())
 	case errors.Is(err, ErrNotOrganizer):
 		httpx.Fail(c, http.StatusForbidden, 403001, err.Error())
+	case errors.Is(err, contentmoderation.ErrRejected):
+		httpx.Fail(c, http.StatusUnprocessableEntity, 422001, err.Error())
+	case errors.Is(err, contentmoderation.ErrUnavailable):
+		httpx.Fail(c, http.StatusServiceUnavailable, 503001, contentmoderation.ErrUnavailable.Error())
 	case errors.Is(err, ErrInvalidTitle),
 		errors.Is(err, ErrInvalidCategory),
 		errors.Is(err, ErrInvalidLocation),

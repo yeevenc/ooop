@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"ooop-admin-api/internal/auth"
+	"ooop-admin-api/internal/contentmoderation"
 	"ooop-admin-api/internal/logger"
 	"ooop-admin-api/internal/provider"
 )
@@ -45,6 +46,7 @@ type AuthServiceOptions struct {
 	MobileVerifier   provider.MobileVerifier
 	SMSSender        provider.SMSSender
 	RealNameVerifier provider.RealNameVerifier
+	ContentChecker   *contentmoderation.Checker
 	CodeSecret       string
 }
 
@@ -57,6 +59,7 @@ type AuthService struct {
 	mobileVerifier   provider.MobileVerifier
 	smsSender        provider.SMSSender
 	realNameVerifier provider.RealNameVerifier
+	contentChecker   *contentmoderation.Checker
 	codeSecret       string
 }
 
@@ -158,6 +161,7 @@ func NewAuthService(opts AuthServiceOptions) *AuthService {
 		mobileVerifier:   opts.MobileVerifier,
 		smsSender:        opts.SMSSender,
 		realNameVerifier: opts.RealNameVerifier,
+		contentChecker:   opts.ContentChecker,
 		codeSecret:       opts.CodeSecret,
 	}
 }
@@ -433,6 +437,20 @@ func (s *AuthService) UpdateProfile(ctx context.Context, userID int64, update Pr
 	normalized, err := normalizeProfileUpdate(update)
 	if err != nil {
 		return PublicUser{}, err
+	}
+	if normalized.Nickname != nil {
+		if err := s.contentChecker.Check(ctx, contentmoderation.SceneNickname,
+			contentmoderation.Field{Name: "昵称", Content: *normalized.Nickname},
+		); err != nil {
+			return PublicUser{}, err
+		}
+	}
+	if normalized.Bio != nil {
+		if err := s.contentChecker.Check(ctx, contentmoderation.SceneContent,
+			contentmoderation.Field{Name: "个性签名", Content: *normalized.Bio},
+		); err != nil {
+			return PublicUser{}, err
+		}
 	}
 	if err := s.users.UpdateProfile(ctx, userID, normalized); err != nil {
 		return PublicUser{}, err

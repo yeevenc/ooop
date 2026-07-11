@@ -10,6 +10,7 @@ import (
 	"ooop-admin-api/internal/admin"
 	"ooop-admin-api/internal/auth"
 	"ooop-admin-api/internal/config"
+	"ooop-admin-api/internal/contentmoderation"
 	"ooop-admin-api/internal/database"
 	"ooop-admin-api/internal/feedback"
 	"ooop-admin-api/internal/httpx"
@@ -66,6 +67,11 @@ func main() {
 	pushSender := provider.NewDualChannelPusher(jpushPusher, harmonyPusher)
 	smsSender := provider.NewAliyunSMSSender(aliyunClient, cfg.Aliyun.SMS)
 	realNameVerifier := provider.NewAliyunIDCardVerifier(cfg.Aliyun.IDCard)
+	var contentReviewer contentmoderation.Reviewer
+	if cfg.Aliyun.ContentModeration.Enabled {
+		contentReviewer = provider.NewAliyunContentModerator(aliyunClient, cfg.Aliyun.ContentModeration)
+	}
+	contentChecker := contentmoderation.NewChecker(contentReviewer, cfg.Aliyun.ContentModeration.BlockedWords)
 
 	authService := user.NewAuthService(user.AuthServiceOptions{
 		Users:            userRepo,
@@ -76,10 +82,11 @@ func main() {
 		MobileVerifier:   mobileVerifier,
 		SMSSender:        smsSender,
 		RealNameVerifier: realNameVerifier,
+		ContentChecker:   contentChecker,
 		CodeSecret:       cfg.Auth.CodeSecret,
 	})
 	adminService := admin.NewService(adminRepo, passwordHasher, adminTokenManager)
-	activityService := activity.NewService(activityRepo, userRepo)
+	activityService := activity.NewService(activityRepo, userRepo, contentChecker)
 	messageService := message.NewService(messageRepo, pushSender, userRepo)
 	feedbackService := feedback.NewService(feedbackRepo, authService)
 	activityService.SetReviewNotifier(messageService)

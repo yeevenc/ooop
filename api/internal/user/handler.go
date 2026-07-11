@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"ooop-admin-api/internal/auth"
+	"ooop-admin-api/internal/contentmoderation"
 	"ooop-admin-api/internal/httpx"
 	"ooop-admin-api/internal/logger"
 	"ooop-admin-api/internal/provider"
@@ -365,6 +366,10 @@ func writeServiceResult(c *gin.Context, data interface{}, err error) {
 		errors.Is(err, ErrInvalidRealName),
 		errors.Is(err, ErrRealNameMismatch):
 		httpx.Fail(c, http.StatusBadRequest, 400002, err.Error())
+	case errors.Is(err, contentmoderation.ErrRejected):
+		httpx.Fail(c, http.StatusUnprocessableEntity, 422001, err.Error())
+	case errors.Is(err, contentmoderation.ErrUnavailable):
+		httpx.Fail(c, http.StatusServiceUnavailable, 503001, contentmoderation.ErrUnavailable.Error())
 	case errors.Is(err, ErrInvalidAccount):
 		httpx.Fail(c, http.StatusUnauthorized, 401003, err.Error())
 	case errors.Is(err, ErrDisabledUser):

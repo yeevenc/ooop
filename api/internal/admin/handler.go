@@ -9,6 +9,7 @@ import (
 
 	"ooop-admin-api/internal/activity"
 	"ooop-admin-api/internal/auth"
+	"ooop-admin-api/internal/contentmoderation"
 	"ooop-admin-api/internal/httpx"
 	"ooop-admin-api/internal/user"
 )
@@ -167,6 +168,10 @@ func writeResult(c *gin.Context, data interface{}, err error) {
 		httpx.Fail(c, http.StatusUnauthorized, 401003, err.Error())
 	case errors.Is(err, ErrDisabledAdmin):
 		httpx.Fail(c, http.StatusForbidden, 403001, err.Error())
+	case errors.Is(err, contentmoderation.ErrRejected):
+		httpx.Fail(c, http.StatusUnprocessableEntity, 422001, err.Error())
+	case errors.Is(err, contentmoderation.ErrUnavailable):
+		httpx.Fail(c, http.StatusServiceUnavailable, 503001, contentmoderation.ErrUnavailable.Error())
 	case errors.Is(err, user.ErrInvalidProfile):
 		httpx.Fail(c, http.StatusBadRequest, 400002, err.Error())
 	case errors.Is(err, user.ErrNotFound):
