@@ -22,7 +22,6 @@ type JiguangPusher struct {
 
 const defaultHarmonyOSDistribution = "jpush"
 const defaultPushTimeToLive = 300
-
 func NewJiguangPusher(cfg config.JiguangConfig) *JiguangPusher {
 	return &JiguangPusher{
 		cfg: cfg,
@@ -71,6 +70,13 @@ func (p *JiguangPusher) Push(ctx context.Context, payload PushPayload) (PushChan
 				"messageId":  fmt.Sprintf("%d", payload.MessageID),
 				"activityId": fmt.Sprintf("%d", payload.ActivityID),
 				"type":       payload.MessageType,
+			},
+			"badge_add_num":1,
+			"category": "WORK",
+			"push_type": 0,
+			"display_foreground": "1", // 值为 "1" 时，APP 在前台会弹出/展示通知栏消息。
+			"intent": map[string]interface{}{
+				"url": "action.system.home",
 			},
 		},
 		"options": map[string]interface{}{
