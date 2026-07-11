@@ -730,18 +730,17 @@ func (s *AuthService) ensureUserActive(ctx context.Context, item *User) error {
 	return fmt.Errorf("%w：%s", ErrDisabledUser, msg)
 }
 
+// banDeniedMessage 组装封禁提示：始终包含时长 + 原因；原因为空时用默认文案。
 func banDeniedMessage(item User) string {
+	reason := strings.TrimSpace(item.BanReason)
+	if reason == "" {
+		reason = "暂无具体原因"
+	}
 	if item.BannedUntil != nil {
 		until := item.BannedUntil.Local().Format("2006-01-02 15:04:05")
-		if reason := strings.TrimSpace(item.BanReason); reason != "" {
-			return fmt.Sprintf("限时封禁至 %s，原因：%s", until, reason)
-		}
-		return fmt.Sprintf("限时封禁至 %s", until)
+		return fmt.Sprintf("限时封禁至 %s，原因：%s", until, reason)
 	}
-	if reason := strings.TrimSpace(item.BanReason); reason != "" {
-		return "永久封禁，原因：" + reason
-	}
-	return "永久封禁"
+	return "永久封禁，原因：" + reason
 }
 
 // BanUser 后台封禁 APP 用户。
