@@ -577,6 +577,35 @@ func (s *Service) ListApplicants(ctx context.Context, organizerID, activityID in
 	return list, nil
 }
 
+// ListApprovedParticipants 活动已通过报名的成员列表（公开，仅 approved）。
+// 供活动详情「已报名成员 · 查看更多」使用，不返回待审核/已拒绝。
+func (s *Service) ListApprovedParticipants(ctx context.Context, activityID int64) ([]PublicParticipant, error) {
+	if _, err := s.findActivity(ctx, activityID); err != nil {
+		return nil, err
+	}
+
+	parts, err := s.activities.ListParticipantsByActivity(ctx, activityID, []string{ParticipantStatusApproved}, 0)
+	if err != nil {
+		return nil, err
+	}
+	users := s.usersByParticipants(ctx, parts)
+
+	list := make([]PublicParticipant, 0, len(parts))
+	for _, p := range parts {
+		u := users[p.UserID]
+		list = append(list, PublicParticipant{
+			ID:          strconv.FormatInt(p.ID, 10),
+			UserID:      strconv.FormatInt(p.UserID, 10),
+			Name:        displayName(u, p.UserID),
+			Avatar:      user.AvatarURL(u.Avatar),
+			Gender:      u.Gender,
+			AvatarColor: "#8fa061",
+			IsOnline:    false,
+		})
+	}
+	return list, nil
+}
+
 // ReviewApplicant 发起人审核某报名：approve→approved 并把人数计入；reject→rejected。仅处理 joined。
 func (s *Service) ReviewApplicant(ctx context.Context, organizerID, activityID, targetUserID int64, approve bool, rejectReason string) error {
 	item, err := s.findActivity(ctx, activityID)

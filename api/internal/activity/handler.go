@@ -71,6 +71,8 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	group.PUT("/:id/take-down", h.appAuth(), h.takeDownOwnedActivity)
 	group.DELETE("/:id", h.appAuth(), h.deleteOwnedActivity)
 	group.GET("/:id/my-participation", h.appAuth(), h.myParticipation)
+	// 已报名成功成员列表（公开，仅 approved）
+	group.GET("/:id/participants", h.listParticipants)
 	group.GET("/:id/applicants", h.appAuth(), h.applicants)
 	group.PUT("/:id/applicants/:uid", h.appAuth(), h.reviewApplicant)
 
@@ -302,6 +304,16 @@ func (h *Handler) myParticipation(c *gin.Context) {
 		return
 	}
 	result, err := h.service.MyParticipation(c.Request.Context(), userID, id)
+	writeResult(c, result, err)
+}
+
+// listParticipants 活动已通过报名的成员列表（公开，仅 approved）。
+func (h *Handler) listParticipants(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	result, err := h.service.ListApprovedParticipants(c.Request.Context(), id)
 	writeResult(c, result, err)
 }
 
