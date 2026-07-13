@@ -22,6 +22,7 @@ type JiguangPusher struct {
 
 const defaultHarmonyOSDistribution = "jpush"
 const defaultPushTimeToLive = 300
+
 func NewJiguangPusher(cfg config.JiguangConfig) *JiguangPusher {
 	return &JiguangPusher{
 		cfg: cfg,
@@ -33,11 +34,12 @@ func NewJiguangPusher(cfg config.JiguangConfig) *JiguangPusher {
 
 func (p *JiguangPusher) Push(ctx context.Context, payload PushPayload) (PushChannelResult, error) {
 	alias := strings.TrimSpace(payload.Alias)
+	registrationID := strings.TrimSpace(payload.RegistrationID)
 	result := PushChannelResult{
 		Channel: PushChannelJiguang,
 	}
-	if alias == "" {
-		err := errors.New("极光推送别名不能为空")
+	if alias == "" && registrationID == "" {
+		err := errors.New("极光推送目标不能为空")
 		result.Message = err.Error()
 		return result, err
 	}
@@ -57,11 +59,13 @@ func (p *JiguangPusher) Push(ctx context.Context, payload PushPayload) (PushChan
 		return result, err
 	}
 
+	audience := map[string]interface{}{"alias": []string{alias}}
+	if registrationID != "" {
+		audience = map[string]interface{}{"registration_id": []string{registrationID}}
+	}
 	requestBody := map[string]interface{}{
 		"platform": []string{"hmos"},
-		"audience": map[string]interface{}{
-			"alias": []string{alias},
-		},
+		"audience": audience,
 		"message": map[string]interface{}{
 			"msg_content":  payload.Alert,
 			"title":        payload.Title,
@@ -71,9 +75,8 @@ func (p *JiguangPusher) Push(ctx context.Context, payload PushPayload) (PushChan
 				"activityId": fmt.Sprintf("%d", payload.ActivityID),
 				"type":       payload.MessageType,
 			},
-			
 		},
-		
+
 		"options": map[string]interface{}{
 			"time_to_live": defaultPushTimeToLive,
 			"third_party_channel": map[string]interface{}{

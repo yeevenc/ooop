@@ -19,6 +19,14 @@ func TestJiguangPusherSendsCustomMessageOnly(t *testing.T) {
 		if _, exists := body["notification"]; exists {
 			t.Error("request should not contain notification")
 		}
+		audience := body["audience"].(map[string]interface{})
+		registrationIDs := audience["registration_id"].([]interface{})
+		if len(registrationIDs) != 1 || registrationIDs[0] != "registration-3000" {
+			t.Errorf("audience = %+v", audience)
+		}
+		if _, exists := audience["alias"]; exists {
+			t.Errorf("registration_id 存在时不应再使用 alias: %+v", audience)
+		}
 		message, ok := body["message"].(map[string]interface{})
 		if !ok || message["msg_content"] != "活动已通过审核" {
 			t.Errorf("message = %+v", message)
@@ -40,12 +48,13 @@ func TestJiguangPusherSendsCustomMessageOnly(t *testing.T) {
 		PushURL:      server.URL,
 	})
 	result, err := pusher.Push(context.Background(), PushPayload{
-		Alias:       "3000",
-		Title:       "活动通知",
-		Alert:       "活动已通过审核",
-		MessageType: "activity_review",
-		MessageID:   88,
-		ActivityID:  99,
+		Alias:          "3000",
+		RegistrationID: "registration-3000",
+		Title:          "活动通知",
+		Alert:          "活动已通过审核",
+		MessageType:    "activity_review",
+		MessageID:      88,
+		ActivityID:     99,
 	})
 	if err != nil {
 		t.Fatalf("Push() error = %v", err)

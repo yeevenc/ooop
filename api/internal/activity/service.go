@@ -93,6 +93,7 @@ type Service struct {
 type ReviewNotifier interface {
 	CreateActivityReviewMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, approved bool) (provider.PushResult, error)
 	CreateActivityRegistrationMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, applicantName string) (provider.PushResult, error)
+	CreateRegistrationReviewMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, approved bool, entryCode string, rejectReason string) (provider.PushResult, error)
 }
 
 type CreateInput struct {
@@ -642,7 +643,11 @@ func (s *Service) ReviewApplicant(ctx context.Context, organizerID, activityID, 
 		}
 		p.Status = ParticipantStatusRejected
 		p.RejectReason = rejectReason
-		return s.activities.SaveParticipant(ctx, &p)
+		if err := s.activities.SaveParticipant(ctx, &p); err != nil {
+			return err
+		}
+		s.notifyApplicantReview(ctx, item, p, false)
+		return nil
 	}
 
 	// 通过前重读活动校验名额，避免超员。
@@ -662,7 +667,11 @@ func (s *Service) ReviewApplicant(ctx context.Context, organizerID, activityID, 
 	if err := s.activities.SaveParticipant(ctx, &p); err != nil {
 		return err
 	}
-	return s.activities.AdjustCurrentCount(ctx, activityID, p.Count)
+	if err := s.activities.AdjustCurrentCount(ctx, activityID, p.Count); err != nil {
+		return err
+	}
+	s.notifyApplicantReview(ctx, item, p, true)
+	return nil
 }
 
 // MyParticipation 返回当前用户对某活动的报名状态（用于详情页按钮状态切换）；未报名返回 nil。
@@ -820,13 +829,32 @@ func (s *Service) notifyOrganizerRegistration(ctx context.Context, item Activity
 		applicantName = displayName(applicant, applicantUserID)
 	}
 
-	_, _ = s.reviewNotifier.CreateActivityRegistrationMessage(
+	if _, err := s.reviewNotifier.CreateActivityRegistrationMessage(
 		ctx,
 		item.UserID,
 		item.ID,
 		item.Title,
 		applicantName,
-	)
+	); err != nil {
+		logger.Errorf("活动报名通知发送失败: activity_id=%d, organizer_id=%d, applicant_id=%d, error=%v", item.ID, item.UserID, applicantUserID, err)
+	}
+}
+
+func (s *Service) notifyApplicantReview(ctx context.Context, item Activity, participant ActivityParticipant, approved bool) {
+	if s.reviewNotifier == nil {
+		return
+	}
+	if _, err := s.reviewNotifier.CreateRegistrationReviewMessage(
+		ctx,
+		participant.UserID,
+		item.ID,
+		item.Title,
+		approved,
+		participant.EntryCode,
+		participant.RejectReason,
+	); err != nil {
+		logger.Errorf("报名审核通知发送失败: activity_id=%d, applicant_id=%d, approved=%t, error=%v", item.ID, participant.UserID, approved, err)
+	}
 }
 
 // relativeTime 把时间转成相对文案（刚刚/x分钟前/x小时前/x天前）。
@@ -1196,18 +1224,18 @@ func (input CreateInput) toModel(userID int64) (Activity, error) {
 	}
 
 	return Activity{
-		UserID:            userID,
-		Title:             title,
-		CategoryID:        categoryID,
-		CategoryLabel:     strings.TrimSpace(input.CategoryLabel),
-		ActivityDate:      input.ActivityDate,
-		ActivityTime:      strings.TrimSpace(input.ActivityTime),
-		DeadlineAt:        input.DeadlineAt,
-		LocationText:      locationText,
-		City:              city,
-		Latitude:          input.Latitude,
-		Longitude:         input.Longitude,
-		TotalCount:        totalCount,
+		UserID:        userID,
+		Title:         title,
+		CategoryID:    categoryID,
+		CategoryLabel: strings.TrimSpace(input.CategoryLabel),
+		ActivityDate:  input.ActivityDate,
+		ActivityTime:  strings.TrimSpace(input.ActivityTime),
+		DeadlineAt:    input.DeadlineAt,
+		LocationText:  locationText,
+		City:          city,
+		Latitude:      input.Latitude,
+		Longitude:     input.Longitude,
+		TotalCount:    totalCount,
 		// 已报名人数仅统计「审核通过」的参加名额，发起人不占名额
 		CurrentCount:      0,
 		CostType:          strings.TrimSpace(input.CostType),

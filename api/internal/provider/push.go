@@ -24,6 +24,7 @@ const (
 
 type PushPayload struct {
 	Alias            string
+	RegistrationID   string
 	HarmonyPushToken string
 	Title            string
 	Alert            string

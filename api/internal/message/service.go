@@ -75,6 +75,33 @@ func (s *Service) CreateActivityRegistrationMessage(ctx context.Context, userID 
 	return s.pushToUser(ctx, userID, TypeRegistration, title, content, item.ID, activityID)
 }
 
+func (s *Service) CreateRegistrationReviewMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, approved bool, entryCode string, rejectReason string) (provider.PushResult, error) {
+	title := "报名审核通知"
+	content := fmt.Sprintf("您报名的%s未通过审核。", strings.TrimSpace(activityTitle))
+	if reason := strings.TrimSpace(rejectReason); reason != "" {
+		content = fmt.Sprintf("您报名的%s未通过审核：%s", strings.TrimSpace(activityTitle), reason)
+	}
+	if approved {
+		content = fmt.Sprintf("您报名的%s已通过审核。", strings.TrimSpace(activityTitle))
+		if code := strings.TrimSpace(entryCode); code != "" {
+			content = fmt.Sprintf("您报名的%s已通过审核，参加编号为 %s。", strings.TrimSpace(activityTitle), code)
+		}
+	}
+
+	item := &UserMessage{
+		UserID:     userID,
+		Type:       TypeRegistrationReview,
+		Title:      title,
+		Content:    content,
+		ActivityID: &activityID,
+	}
+	if err := s.messages.Create(ctx, item); err != nil {
+		return provider.PushResult{}, err
+	}
+
+	return s.pushToUser(ctx, userID, TypeRegistrationReview, title, content, item.ID, activityID)
+}
+
 func (s *Service) ListUserMessages(ctx context.Context, userID int64, page int, pageSize int) ([]PublicMessage, error) {
 	items, err := s.messages.ListByUser(ctx, UserMessageQuery{
 		UserID:   userID,
@@ -142,6 +169,7 @@ func (s *Service) pushToUser(ctx context.Context, userID int64, messageType stri
 
 	result, err := s.pusher.Push(ctx, provider.PushPayload{
 		Alias:            alias,
+		RegistrationID:   pushUser.RegistrationID,
 		HarmonyPushToken: pushUser.HarmonyPushToken,
 		Title:            title,
 		Alert:            content,
@@ -169,7 +197,7 @@ func (s *Service) pushUser(ctx context.Context, userID int64, messageType string
 	}
 
 	switch messageType {
-	case TypeActivityReview, TypeRegistration:
+	case TypeActivityReview, TypeRegistration, TypeRegistrationReview:
 		return item, item.AllowsActivityReminderPush(), nil
 	case TypeSystem:
 		return item, item.AllowsSystemMessagePush(), nil

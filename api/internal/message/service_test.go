@@ -59,3 +59,30 @@ func TestCreatedMessageIDIsSharedWithPushChannels(t *testing.T) {
 		t.Fatalf("push payload = %+v", pusher.payload)
 	}
 }
+
+func TestRegistrationReviewUsesSharedPushChannel(t *testing.T) {
+	pusher := &capturePushSender{}
+	service := NewService(pushTestRepository{}, pusher, nil)
+
+	_, err := service.CreateRegistrationReviewMessage(
+		context.Background(),
+		3001,
+		99,
+		"周末徒步",
+		true,
+		"ABC12345",
+		"",
+	)
+	if err != nil {
+		t.Fatalf("CreateRegistrationReviewMessage() error = %v", err)
+	}
+	if pusher.payload.MessageType != TypeRegistrationReview {
+		t.Fatalf("MessageType = %s, want %s", pusher.payload.MessageType, TypeRegistrationReview)
+	}
+	if pusher.payload.MessageID != 77 || pusher.payload.ActivityID != 99 {
+		t.Fatalf("push payload = %+v", pusher.payload)
+	}
+	if pusher.payload.Alert != "您报名的周末徒步已通过审核，参加编号为 ABC12345。" {
+		t.Fatalf("Alert = %s", pusher.payload.Alert)
+	}
+}

@@ -3,10 +3,11 @@ package message
 import "time"
 
 const (
-	TypeActivityReview = "activity_review"
-	TypeRegistration   = "registration"
-	TypeSystem         = "system"
-	TypeInteraction    = "interaction"
+	TypeActivityReview     = "activity_review"
+	TypeRegistration       = "registration"
+	TypeRegistrationReview = "registration_review"
+	TypeSystem             = "system"
+	TypeInteraction        = "interaction"
 )
 
 type UserMessage struct {
