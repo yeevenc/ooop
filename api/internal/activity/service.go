@@ -55,6 +55,8 @@ type PublicParticipant struct {
 	Gender      string `json:"gender"`
 	AvatarColor string `json:"avatarColor"`
 	IsOnline    bool   `json:"isOnline"`
+	// Count 该成员报名人数（本人 + 同行）
+	Count int `json:"count"`
 }
 
 // PublicApplicant 待审核申请人（发起人「申请人审核」用）。
@@ -578,7 +580,7 @@ func (s *Service) ListApplicants(ctx context.Context, organizerID, activityID in
 }
 
 // ListApprovedParticipants 活动已通过报名的成员列表（公开，仅 approved）。
-// 供活动详情「已报名成员 · 查看更多」使用，不返回待审核/已拒绝。
+// 供活动详情「已报名成员 · 查看更多」使用，不返回待审核/已拒绝/发起人。
 func (s *Service) ListApprovedParticipants(ctx context.Context, activityID int64) ([]PublicParticipant, error) {
 	if _, err := s.findActivity(ctx, activityID); err != nil {
 		return nil, err
@@ -593,6 +595,10 @@ func (s *Service) ListApprovedParticipants(ctx context.Context, activityID int64
 	list := make([]PublicParticipant, 0, len(parts))
 	for _, p := range parts {
 		u := users[p.UserID]
+		count := p.Count
+		if count < 1 {
+			count = 1
+		}
 		list = append(list, PublicParticipant{
 			ID:          strconv.FormatInt(p.ID, 10),
 			UserID:      strconv.FormatInt(p.UserID, 10),
@@ -601,6 +607,7 @@ func (s *Service) ListApprovedParticipants(ctx context.Context, activityID int64
 			Gender:      u.Gender,
 			AvatarColor: "#8fa061",
 			IsOnline:    false,
+			Count:       count,
 		})
 	}
 	return list, nil
@@ -757,6 +764,10 @@ func (s *Service) approvedParticipants(ctx context.Context, activityID int64) []
 	list := make([]any, 0, len(parts))
 	for _, p := range parts {
 		u := users[p.UserID]
+		count := p.Count
+		if count < 1 {
+			count = 1
+		}
 		list = append(list, PublicParticipant{
 			ID:          strconv.FormatInt(p.ID, 10),
 			UserID:      strconv.FormatInt(p.UserID, 10),
@@ -765,6 +776,7 @@ func (s *Service) approvedParticipants(ctx context.Context, activityID int64) []
 			Gender:      u.Gender,
 			AvatarColor: "#8fa061",
 			IsOnline:    false,
+			Count:       count,
 		})
 	}
 	return list
@@ -1196,7 +1208,8 @@ func (input CreateInput) toModel(userID int64) (Activity, error) {
 		Latitude:          input.Latitude,
 		Longitude:         input.Longitude,
 		TotalCount:        totalCount,
-		CurrentCount:      1,
+		// 已报名人数仅统计「审核通过」的参加名额，发起人不占名额
+		CurrentCount:      0,
 		CostType:          strings.TrimSpace(input.CostType),
 		FeeDetail:         strings.TrimSpace(input.FeeDetail),
 		GenderRequirement: strings.TrimSpace(input.GenderRequirement),

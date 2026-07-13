@@ -25,7 +25,8 @@ type Activity struct {
 	Latitude          float64    `gorm:"not null" json:"latitude"`
 	Longitude         float64    `gorm:"not null" json:"longitude"`
 	TotalCount        int        `gorm:"not null;default:2" json:"total_count"`
-	CurrentCount      int        `gorm:"not null;default:1" json:"current_count"`
+	// CurrentCount 已通过报名占用的名额（不含发起人；新建活动为 0）
+	CurrentCount      int        `gorm:"not null;default:0" json:"current_count"`
 	CostType          string     `gorm:"size:32;not null;default:''" json:"cost_type"`
 	FeeDetail         string     `gorm:"size:80;not null;default:''" json:"fee_detail"`
 	GenderRequirement string     `gorm:"size:32;not null;default:''" json:"gender_requirement"`
