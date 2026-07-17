@@ -7,8 +7,6 @@ import (
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
-
-	"ooop-admin-api/internal/provider"
 )
 
 type CreateMessageParams struct {
@@ -135,11 +133,8 @@ func (r *GormRepository) CreateMessage(ctx context.Context, params CreateMessage
 			return err
 		}
 
-		tasks := []PushTask{
-			newPushTask(message.ID, params.RecipientID, provider.PushChannelJiguang, params.CreatedAt),
-			newPushTask(message.ID, params.RecipientID, provider.PushChannelHarmony, params.CreatedAt),
-		}
-		if err := tx.Create(&tasks).Error; err != nil {
+		task := newPushTask(message.ID, params.RecipientID, PushTaskChannelDual, params.CreatedAt)
+		if err := tx.Create(&task).Error; err != nil {
 			return err
 		}
 

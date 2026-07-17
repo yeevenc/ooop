@@ -17,7 +17,11 @@ import (
 // 推送失败会持续重试到消息接近过期，避免短时服务商故障形成永久断点。
 const maxPushAttempts = 64
 
-type ChannelPushSender interface {
+type PushSender interface {
+	Push(ctx context.Context, payload provider.PushPayload) (provider.PushResult, error)
+}
+
+type channelPushSender interface {
 	PushChannel(ctx context.Context, channel string, payload provider.PushPayload) (provider.PushChannelResult, error)
 }
 
@@ -33,7 +37,7 @@ type WorkerOptions struct {
 type Worker struct {
 	repository PushRepository
 	users      PushUserReader
-	pusher     ChannelPushSender
+	pusher     PushSender
 	options    WorkerOptions
 }
 
@@ -53,7 +57,7 @@ type realtimeMessage struct {
 	CreatedAt       time.Time `json:"createdAt"`
 }
 
-func NewWorker(repository PushRepository, users PushUserReader, pusher ChannelPushSender, options WorkerOptions) *Worker {
+func NewWorker(repository PushRepository, users PushUserReader, pusher PushSender, options WorkerOptions) *Worker {
 	if options.PushInterval <= 0 {
 		options.PushInterval = time.Second
 	}
@@ -153,7 +157,8 @@ func (w *Worker) processPushTask(ctx context.Context, task PushTask) {
 		w.retryPushTask(ctx, task, attempts, err)
 		return
 	}
-	if task.Channel == provider.PushChannelHarmony && !pushUser.IsNotificationPermissionEnabled() {
+	if (task.Channel == PushTaskChannelDual || task.Channel == provider.PushChannelHarmony) &&
+		!pushUser.IsNotificationPermissionEnabled() {
 		_ = w.repository.MarkPushSkipped(ctx, task.ID, attempts, "用户系统通知权限关闭")
 		return
 	}
@@ -167,7 +172,7 @@ func (w *Worker) processPushTask(ctx context.Context, task PushTask) {
 		w.retryPushTask(ctx, task, attempts, err)
 		return
 	}
-	result, err := w.pusher.PushChannel(ctx, task.Channel, payload)
+	result, err := w.sendPush(ctx, task.Channel, payload)
 	if err == nil && result.Success {
 		if err := w.repository.MarkPushSucceeded(ctx, task.ID, attempts); err != nil {
 			logger.Errorf("聊天推送任务完成状态保存失败: task_id=%d, error=%v", task.ID, err)
@@ -184,6 +189,24 @@ func (w *Worker) processPushTask(ctx context.Context, task PushTask) {
 		err = errors.New(result.Message)
 	}
 	w.retryPushTask(ctx, task, attempts, err)
+}
+
+func (w *Worker) sendPush(ctx context.Context, channel string, payload provider.PushPayload) (provider.PushChannelResult, error) {
+	if channel == PushTaskChannelDual {
+		result, err := w.pusher.Push(ctx, payload)
+		return provider.PushChannelResult{
+			Channel:   PushTaskChannelDual,
+			Triggered: result.Triggered,
+			Success:   result.Success,
+			Message:   result.Message,
+		}, err
+	}
+
+	legacyPusher, ok := w.pusher.(channelPushSender)
+	if !ok {
+		return provider.PushChannelResult{Channel: channel}, errors.New("历史单通道推送暂不可用")
+	}
+	return legacyPusher.PushChannel(ctx, channel, payload)
 }
 
 func (w *Worker) buildPushPayload(message Message, pushUser user.User) (provider.PushPayload, error) {

@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -8,6 +9,21 @@ import (
 	"ooop-admin-api/internal/provider"
 	"ooop-admin-api/internal/user"
 )
+
+type workerTestPusher struct {
+	pushCalls        int
+	pushChannelCalls int
+}
+
+func (p *workerTestPusher) Push(context.Context, provider.PushPayload) (provider.PushResult, error) {
+	p.pushCalls++
+	return provider.PushResult{Triggered: true, Success: true, Message: "双通道发送成功"}, nil
+}
+
+func (p *workerTestPusher) PushChannel(context.Context, string, provider.PushPayload) (provider.PushChannelResult, error) {
+	p.pushChannelCalls++
+	return provider.PushChannelResult{Triggered: true, Success: true}, nil
+}
 
 func TestBuildPushPayloadSeparatesRealtimeDataAndBackgroundCopy(t *testing.T) {
 	worker := NewWorker(nil, nil, nil, WorkerOptions{PushCategory: provider.HarmonyCategoryWork})
@@ -57,5 +73,31 @@ func TestChatModelsUseDedicatedTables(t *testing.T) {
 	}
 	if (PushTask{}).TableName() != "chat_push_tasks" {
 		t.Fatal("PushTask table name is incorrect")
+	}
+}
+
+func TestWorkerUsesSharedDualChannelPushForNewTasks(t *testing.T) {
+	pusher := &workerTestPusher{}
+	worker := NewWorker(nil, nil, pusher, WorkerOptions{})
+
+	result, err := worker.sendPush(context.Background(), PushTaskChannelDual, provider.PushPayload{})
+	if err != nil {
+		t.Fatalf("sendPush() error = %v", err)
+	}
+	if !result.Success || pusher.pushCalls != 1 || pusher.pushChannelCalls != 0 {
+		t.Fatalf("result=%+v, pushCalls=%d, pushChannelCalls=%d", result, pusher.pushCalls, pusher.pushChannelCalls)
+	}
+}
+
+func TestWorkerKeepsLegacySingleChannelTasksCompatible(t *testing.T) {
+	pusher := &workerTestPusher{}
+	worker := NewWorker(nil, nil, pusher, WorkerOptions{})
+
+	result, err := worker.sendPush(context.Background(), provider.PushChannelJiguang, provider.PushPayload{})
+	if err != nil {
+		t.Fatalf("sendPush() error = %v", err)
+	}
+	if !result.Success || pusher.pushCalls != 0 || pusher.pushChannelCalls != 1 {
+		t.Fatalf("result=%+v, pushCalls=%d, pushChannelCalls=%d", result, pusher.pushCalls, pusher.pushChannelCalls)
 	}
 }
