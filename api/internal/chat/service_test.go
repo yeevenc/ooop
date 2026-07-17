@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"ooop-admin-api/internal/contentmoderation"
 	"ooop-admin-api/internal/user"
 )
 
@@ -22,7 +23,7 @@ func (r *serviceTestRepository) CreateMessage(_ context.Context, params CreateMe
 		SenderID:        params.SenderID,
 		RecipientID:     params.RecipientID,
 		ClientMessageID: params.ClientMessageID,
-		Type:            MessageTypeText,
+		Type:            params.Type,
 		Content:         params.Content,
 		CreatedAt:       params.CreatedAt,
 		ExpiresAt:       params.ExpiresAt,
@@ -91,6 +92,65 @@ func TestSendMessageCreatesSevenDayMessage(t *testing.T) {
 	retention := repository.params.ExpiresAt.Sub(repository.params.CreatedAt)
 	if retention != 7*24*time.Hour {
 		t.Fatalf("retention = %s", retention)
+	}
+}
+
+func TestSendImageMessage(t *testing.T) {
+	repository := &serviceTestRepository{}
+	service := NewService(repository, serviceTestUsers{items: map[int64]user.User{
+		3001: {ID: 3001},
+	}}, nil, 7*24*time.Hour)
+
+	result, err := service.SendMessage(context.Background(), 3000, SendMessageInput{
+		RecipientID:     3001,
+		ClientMessageID: "image-message-0001",
+		Type:            MessageTypeImage,
+		Content:         "https://cdn.example.com/chat/image.jpg",
+	})
+	if err != nil {
+		t.Fatalf("SendMessage() error = %v", err)
+	}
+	if result.Message.Type != MessageTypeImage || repository.params.Type != MessageTypeImage {
+		t.Fatalf("result = %+v, params = %+v", result, repository.params)
+	}
+}
+
+func TestSendMessageRejectsSensitiveContentBeforeStorage(t *testing.T) {
+	repository := &serviceTestRepository{}
+	checker, err := contentmoderation.NewChecker([]string{"聊天禁用测试词"})
+	if err != nil {
+		t.Fatalf("NewChecker() error = %v", err)
+	}
+	service := NewService(repository, serviceTestUsers{items: map[int64]user.User{
+		3001: {ID: 3001},
+	}}, checker, 7*24*time.Hour)
+
+	_, err = service.SendMessage(context.Background(), 3000, SendMessageInput{
+		RecipientID:     3001,
+		ClientMessageID: "sensitive-message-0001",
+		Content:         "这是一条聊天禁用测试词消息",
+	})
+	if !errors.Is(err, contentmoderation.ErrRejected) {
+		t.Fatalf("error = %v, want ErrRejected", err)
+	}
+	if repository.params.Content != "" {
+		t.Fatalf("rejected content was stored: %q", repository.params.Content)
+	}
+}
+
+func TestSendImageMessageRejectsInvalidURL(t *testing.T) {
+	service := NewService(&serviceTestRepository{}, serviceTestUsers{items: map[int64]user.User{
+		3001: {ID: 3001},
+	}}, nil, 7*24*time.Hour)
+
+	_, err := service.SendMessage(context.Background(), 3000, SendMessageInput{
+		RecipientID:     3001,
+		ClientMessageID: "image-message-0002",
+		Type:            MessageTypeImage,
+		Content:         "file:///private/image.jpg",
+	})
+	if !errors.Is(err, ErrImageURLInvalid) {
+		t.Fatalf("error = %v, want ErrImageURLInvalid", err)
 	}
 }
 

@@ -2,7 +2,7 @@
 
 ## 目标
 
-- 支持文字与 Unicode Emoji 单聊。
+- 支持文字、Unicode Emoji 与图片单聊。
 - 按 1000 名用户同时在线的容量目标设计，发送接口不等待第三方 Push 网络请求。
 - 消息默认保存 7 天，可通过配置调整为 3～7 天。
 - 复用现有极光自定义消息与 HarmonyOS Push Kit 双通道能力。
@@ -37,9 +37,12 @@ Content-Type: application/json
 {
   "recipient_id": 3001,
   "client_message_id": "0190f25d-6b71-7b68-bc4f-5ce7962a60c6",
+  "type": "text",
   "content": "你好 😊"
 }
 ```
+
+`type` 支持 `text` 与 `image`，省略时按 `text` 处理。图片消息的 `content` 为上传成功后的 HTTP/HTTPS 地址，会话摘要显示为“[图片]”。
 
 `client_message_id` 由客户端生成，同一发送人下必须唯一。网络超时后使用原值重试，服务端返回同一条消息，不重复增加未读数和投递任务。
 
@@ -93,7 +96,8 @@ GET /api/v1/chat/unread-count
   "messageId": "100",
   "conversationId": "20",
   "senderId": "3000",
-  "type": "chat_message"
+  "type": "chat_message",
+  "messageType": "text"
 }
 ```
 

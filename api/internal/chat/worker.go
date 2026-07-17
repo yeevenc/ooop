@@ -48,6 +48,7 @@ type realtimeMessage struct {
 	RecipientID     string    `json:"recipientId"`
 	ClientMessageID string    `json:"clientMessageId"`
 	Type            string    `json:"type"`
+	MessageType     string    `json:"messageType"`
 	Content         string    `json:"content"`
 	CreatedAt       time.Time `json:"createdAt"`
 }
@@ -193,6 +194,7 @@ func (w *Worker) buildPushPayload(message Message, pushUser user.User) (provider
 		RecipientID:     formatID(message.RecipientID),
 		ClientMessageID: message.ClientMessageID,
 		Type:            PushMessageType,
+		MessageType:     message.Type,
 		Content:         message.Content,
 		CreatedAt:       message.CreatedAt,
 	}
@@ -212,8 +214,11 @@ func (w *Worker) buildPushPayload(message Message, pushUser user.User) (provider
 		Category:         w.options.PushCategory,
 		MessageID:        message.ID,
 		Extras: map[string]string{
+			"type":           PushMessageType,
+			"messageId":      formatID(message.ID),
 			"conversationId": formatID(message.ConversationID),
 			"senderId":       formatID(message.SenderID),
+			"messageType":    message.Type,
 		},
 	}, nil
 }

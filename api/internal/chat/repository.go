@@ -15,6 +15,7 @@ type CreateMessageParams struct {
 	SenderID        int64
 	RecipientID     int64
 	ClientMessageID string
+	Type            string
 	Content         string
 	CreatedAt       time.Time
 	ExpiresAt       time.Time
@@ -66,7 +67,7 @@ func (r *GormRepository) CreateMessage(ctx context.Context, params CreateMessage
 		err := tx.Where("sender_id = ? AND client_message_id = ?", params.SenderID, params.ClientMessageID).
 			First(&existing).Error
 		if err == nil {
-			if existing.RecipientID != params.RecipientID || existing.Content != params.Content {
+			if existing.RecipientID != params.RecipientID || existing.Type != params.Type || existing.Content != params.Content {
 				return ErrClientMessageConflict
 			}
 			message = existing
@@ -97,7 +98,7 @@ func (r *GormRepository) CreateMessage(ctx context.Context, params CreateMessage
 			SenderID:        params.SenderID,
 			RecipientID:     params.RecipientID,
 			ClientMessageID: params.ClientMessageID,
-			Type:            MessageTypeText,
+			Type:            params.Type,
 			Content:         params.Content,
 			CreatedAt:       params.CreatedAt,
 			ExpiresAt:       params.ExpiresAt,
@@ -114,7 +115,7 @@ func (r *GormRepository) CreateMessage(ctx context.Context, params CreateMessage
 				First(&message).Error; err != nil {
 				return err
 			}
-			if message.RecipientID != params.RecipientID || message.Content != params.Content {
+			if message.RecipientID != params.RecipientID || message.Type != params.Type || message.Content != params.Content {
 				return ErrClientMessageConflict
 			}
 			return tx.First(&conversation, message.ConversationID).Error
@@ -122,7 +123,7 @@ func (r *GormRepository) CreateMessage(ctx context.Context, params CreateMessage
 
 		updates := map[string]interface{}{
 			"last_message_id":      message.ID,
-			"last_message_content": message.Content,
+			"last_message_content": messagePreview(message),
 			"last_message_at":      message.CreatedAt,
 		}
 		if params.RecipientID == conversation.UserAID {
@@ -143,13 +144,20 @@ func (r *GormRepository) CreateMessage(ctx context.Context, params CreateMessage
 		}
 
 		conversation.LastMessageID = message.ID
-		conversation.LastMessageContent = message.Content
+		conversation.LastMessageContent = messagePreview(message)
 		conversation.LastMessageAt = &message.CreatedAt
 		created = true
 		return nil
 	})
 
 	return conversation, message, created, err
+}
+
+func messagePreview(message Message) string {
+	if message.Type == MessageTypeImage {
+		return "[图片]"
+	}
+	return message.Content
 }
 
 func (r *GormRepository) ListConversations(ctx context.Context, userID int64, page int, pageSize int) ([]Conversation, error) {

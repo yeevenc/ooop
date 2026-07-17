@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"net/url"
 	"strings"
 	"time"
 	"unicode"
@@ -18,6 +19,8 @@ var (
 	ErrSendToSelf            = errors.New("不能给自己发送消息")
 	ErrContentRequired       = errors.New("请输入消息内容")
 	ErrContentTooLong        = errors.New("消息内容不能超过 2000 个字符")
+	ErrMessageTypeInvalid    = errors.New("暂不支持该消息类型")
+	ErrImageURLInvalid       = errors.New("图片地址格式不正确")
 	ErrClientMessageInvalid  = errors.New("客户端消息号格式不正确")
 	ErrClientMessageConflict = errors.New("客户端消息号已被其他消息使用")
 	ErrCursorConflict        = errors.New("before_id 与 after_id 不能同时使用")
@@ -29,6 +32,7 @@ const maxMessageLength = 2000
 type SendMessageInput struct {
 	RecipientID     int64
 	ClientMessageID string
+	Type            string
 	Content         string
 }
 
@@ -63,6 +67,7 @@ func NewService(messages MessageRepository, users UserReader, checker *contentmo
 func (s *Service) SendMessage(ctx context.Context, senderID int64, input SendMessageInput) (SendMessageResult, error) {
 	content := strings.TrimSpace(input.Content)
 	clientMessageID := strings.TrimSpace(input.ClientMessageID)
+	messageType := normalizeMessageType(input.Type)
 	if input.RecipientID <= 0 {
 		return SendMessageResult{}, ErrRecipientNotFound
 	}
@@ -74,6 +79,12 @@ func (s *Service) SendMessage(ctx context.Context, senderID int64, input SendMes
 	}
 	if utf8.RuneCountInString(content) > maxMessageLength {
 		return SendMessageResult{}, ErrContentTooLong
+	}
+	if messageType == "" {
+		return SendMessageResult{}, ErrMessageTypeInvalid
+	}
+	if messageType == MessageTypeImage && !validImageURL(content) {
+		return SendMessageResult{}, ErrImageURLInvalid
 	}
 	if !validClientMessageID(clientMessageID) {
 		return SendMessageResult{}, ErrClientMessageInvalid
@@ -88,11 +99,13 @@ func (s *Service) SendMessage(ctx context.Context, senderID int64, input SendMes
 		}
 		return SendMessageResult{}, err
 	}
-	if err := s.contentChecker.Check(ctx, contentmoderation.SceneContent, contentmoderation.Field{
-		Name:    "消息内容",
-		Content: content,
-	}); err != nil {
-		return SendMessageResult{}, err
+	if messageType == MessageTypeText {
+		if err := s.contentChecker.Check(ctx, contentmoderation.SceneContent, contentmoderation.Field{
+			Name:    "消息内容",
+			Content: content,
+		}); err != nil {
+			return SendMessageResult{}, err
+		}
 	}
 
 	now := time.Now()
@@ -100,6 +113,7 @@ func (s *Service) SendMessage(ctx context.Context, senderID int64, input SendMes
 		SenderID:        senderID,
 		RecipientID:     input.RecipientID,
 		ClientMessageID: clientMessageID,
+		Type:            messageType,
 		Content:         content,
 		CreatedAt:       now,
 		ExpiresAt:       now.Add(s.retention),
@@ -112,6 +126,25 @@ func (s *Service) SendMessage(ctx context.Context, senderID int64, input SendMes
 		Message: toPublicMessage(item),
 		Created: created,
 	}, nil
+}
+
+func normalizeMessageType(value string) string {
+	switch strings.TrimSpace(value) {
+	case "", MessageTypeText:
+		return MessageTypeText
+	case MessageTypeImage:
+		return MessageTypeImage
+	default:
+		return ""
+	}
+}
+
+func validImageURL(value string) bool {
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
 }
 
 func (s *Service) ListConversations(ctx context.Context, userID int64, page int, pageSize int) (ConversationListResult, error) {

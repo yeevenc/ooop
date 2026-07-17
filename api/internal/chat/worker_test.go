@@ -32,7 +32,9 @@ func TestBuildPushPayloadSeparatesRealtimeDataAndBackgroundCopy(t *testing.T) {
 	if payload.Title != "新会话" || payload.Alert != "您有新会话" {
 		t.Fatalf("background copy = %s / %s", payload.Title, payload.Alert)
 	}
-	if payload.Extras["conversationId"] != "66" || payload.Extras["senderId"] != "3000" {
+	if payload.Extras["type"] != PushMessageType || payload.Extras["messageId"] != "88" ||
+		payload.Extras["conversationId"] != "66" || payload.Extras["senderId"] != "3000" ||
+		payload.Extras["messageType"] != MessageTypeText {
 		t.Fatalf("extras = %+v", payload.Extras)
 	}
 
@@ -40,7 +42,8 @@ func TestBuildPushPayloadSeparatesRealtimeDataAndBackgroundCopy(t *testing.T) {
 	if err := json.Unmarshal([]byte(payload.CustomContent), &realtime); err != nil {
 		t.Fatalf("custom content is not JSON: %v", err)
 	}
-	if realtime.MessageID != "88" || realtime.Content != "你好 😊" || realtime.Type != PushMessageType {
+	if realtime.MessageID != "88" || realtime.Content != "你好 😊" || realtime.Type != PushMessageType ||
+		realtime.MessageType != MessageTypeText {
 		t.Fatalf("realtime = %+v", realtime)
 	}
 }

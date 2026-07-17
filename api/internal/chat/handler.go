@@ -12,6 +12,8 @@ import (
 	"ooop-admin-api/internal/httpx"
 )
 
+const chatContentRejectedCode = 400101
+
 type Handler struct {
 	service      *Service
 	tokenManager *auth.TokenManager
@@ -39,6 +41,7 @@ func (h *Handler) sendMessage(c *gin.Context) {
 	var req struct {
 		RecipientID     int64  `json:"recipient_id"`
 		ClientMessageID string `json:"client_message_id"`
+		Type            string `json:"type"`
 		Content         string `json:"content"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -49,6 +52,7 @@ func (h *Handler) sendMessage(c *gin.Context) {
 	result, err := h.service.SendMessage(c.Request.Context(), userID, SendMessageInput{
 		RecipientID:     req.RecipientID,
 		ClientMessageID: req.ClientMessageID,
+		Type:            req.Type,
 		Content:         req.Content,
 	})
 	writeChatResult(c, result, err)
@@ -176,13 +180,16 @@ func writeChatResult(c *gin.Context, data interface{}, err error) {
 	switch {
 	case errors.Is(err, ErrNotFound), errors.Is(err, ErrRecipientNotFound):
 		httpx.Fail(c, http.StatusNotFound, 404001, err.Error())
+	case errors.Is(err, contentmoderation.ErrRejected):
+		httpx.Fail(c, http.StatusBadRequest, chatContentRejectedCode, err.Error())
 	case errors.Is(err, ErrSendToSelf),
 		errors.Is(err, ErrContentRequired),
 		errors.Is(err, ErrContentTooLong),
+		errors.Is(err, ErrMessageTypeInvalid),
+		errors.Is(err, ErrImageURLInvalid),
 		errors.Is(err, ErrClientMessageInvalid),
 		errors.Is(err, ErrClientMessageConflict),
-		errors.Is(err, ErrCursorConflict),
-		errors.Is(err, contentmoderation.ErrRejected):
+		errors.Is(err, ErrCursorConflict):
 		httpx.Fail(c, http.StatusBadRequest, 400001, err.Error())
 	case errors.Is(err, ErrRateLimited):
 		httpx.Fail(c, http.StatusTooManyRequests, 429001, err.Error())

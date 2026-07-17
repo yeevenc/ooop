@@ -6,8 +6,9 @@ import (
 )
 
 const (
-	MessageTypeText = "text"
-	PushMessageType = "chat_message"
+	MessageTypeText  = "text"
+	MessageTypeImage = "image"
+	PushMessageType  = "chat_message"
 
 	PushTaskPending    = "pending"
 	PushTaskProcessing = "processing"
