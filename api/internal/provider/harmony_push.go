@@ -384,7 +384,12 @@ func normalizeHarmonyCategory(category string) string {
 }
 
 func buildHarmonyClickData(payload PushPayload) map[string]string {
-	data := map[string]string{}
+	data := make(map[string]string, len(payload.Extras)+3)
+	for key, value := range payload.Extras {
+		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
+			data[key] = value
+		}
+	}
 	if payload.MessageID > 0 {
 		data["messageId"] = fmt.Sprintf("%d", payload.MessageID)
 	}

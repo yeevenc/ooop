@@ -20,6 +20,7 @@ type Config struct {
 	ContentModeration ContentModerationConfig
 	Jiguang           JiguangConfig
 	HarmonyPush       HarmonyPushConfig
+	Chat              ChatConfig
 	Qiniu             QiniuConfig
 }
 
@@ -107,6 +108,15 @@ type HarmonyPushConfig struct {
 	TestMessage        bool
 }
 
+type ChatConfig struct {
+	MessageRetention time.Duration
+	PushInterval     time.Duration
+	CleanupInterval  time.Duration
+	PushBatchSize    int
+	PushWorkers      int
+	PushCategory     string
+}
+
 type QiniuConfig struct {
 	AccessKey string
 	SecretKey string
@@ -149,7 +159,7 @@ func Load() Config {
 			},
 			SMS: AliyunSMSConfig{
 				Endpoint:                    getEnv("ALIYUN_SMS_ENDPOINT", "dypnsapi.aliyuncs.com"),
-				SignName:                    getEnv("ALIYUN_SMS_SIGN_NAME", "速通互联验证码"),
+				SignName:                    getEnv("ALIYUN_SMS_SIGN_NAME", "恒创联众"),
 				LoginTemplateCode:           getEnv("ALIYUN_SMS_LOGIN_TEMPLATE_CODE", "100001"),
 				ChangePhoneTemplateCode:     getEnv("ALIYUN_SMS_CHANGE_PHONE_TEMPLATE_CODE", "100002"),
 				ResetPasswordTemplateCode:   getEnv("ALIYUN_SMS_RESET_PASSWORD_TEMPLATE_CODE", "100003"),
@@ -187,6 +197,14 @@ func Load() Config {
 			)),
 			PushURL:     getEnv("HARMONY_PUSH_URL", "https://push-api.cloud.huawei.com"),
 			TestMessage: getBoolEnv("HARMONY_PUSH_TEST_MESSAGE", false),
+		},
+		Chat: ChatConfig{
+			MessageRetention: getDurationEnv("CHAT_MESSAGE_RETENTION", 168*time.Hour),
+			PushInterval:     getDurationEnv("CHAT_PUSH_INTERVAL", time.Second),
+			CleanupInterval:  getDurationEnv("CHAT_CLEANUP_INTERVAL", time.Hour),
+			PushBatchSize:    getIntEnv("CHAT_PUSH_BATCH_SIZE", 100),
+			PushWorkers:      getIntEnv("CHAT_PUSH_WORKERS", 4),
+			PushCategory:     getEnv("CHAT_PUSH_CATEGORY", "WORK"),
 		},
 		Qiniu: QiniuConfig{
 			AccessKey: getEnv("QINIU_ACCESS_KEY", ""),

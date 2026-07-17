@@ -8,7 +8,6 @@ import {
   type CategoryPayload,
 } from '@/api/modules/activity'
 import UploadImage from '@/components/upload/uploadImage.vue'
-
 const props = defineProps<{
   visible: boolean
   category: AdminCategory | null
@@ -107,6 +106,7 @@ async function handleSubmit() {
       </el-form-item>
       <el-form-item label="图标">
         <UploadImage v-model="form.icon" size="small" />
+         
       </el-form-item>
       <el-form-item label="排序">
         <el-input-number v-model="form.sort" :min="0" :step="10" />

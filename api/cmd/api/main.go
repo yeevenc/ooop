@@ -9,6 +9,7 @@ import (
 	"ooop-admin-api/internal/activity"
 	"ooop-admin-api/internal/admin"
 	"ooop-admin-api/internal/auth"
+	"ooop-admin-api/internal/chat"
 	"ooop-admin-api/internal/config"
 	"ooop-admin-api/internal/contentmoderation"
 	"ooop-admin-api/internal/database"
@@ -51,6 +52,7 @@ func main() {
 	codeRepo := user.NewGormLoginCodeRepository(db)
 	activityRepo := activity.NewGormRepository(db)
 	messageRepo := message.NewGormRepository(db)
+	chatRepo := chat.NewGormRepository(db)
 	feedbackRepo := feedback.NewGormRepository(db)
 
 	aliyunClient := provider.NewAliyunRPCClient(cfg.Aliyun.AccessKeyID, cfg.Aliyun.AccessKeySecret)
@@ -87,6 +89,16 @@ func main() {
 	adminService := admin.NewService(adminRepo, passwordHasher, adminTokenManager)
 	activityService := activity.NewService(activityRepo, userRepo, contentChecker)
 	messageService := message.NewService(messageRepo, pushSender, userRepo)
+	chatService := chat.NewService(chatRepo, userRepo, contentChecker, cfg.Chat.MessageRetention)
+	chatWorker := chat.NewWorker(chatRepo, userRepo, pushSender, chat.WorkerOptions{
+		PushInterval:    cfg.Chat.PushInterval,
+		CleanupInterval: cfg.Chat.CleanupInterval,
+		BatchSize:       cfg.Chat.PushBatchSize,
+		Workers:         cfg.Chat.PushWorkers,
+		Retention:       cfg.Chat.MessageRetention,
+		PushCategory:    cfg.Chat.PushCategory,
+	})
+	chatWorker.Start(context.Background())
 	feedbackService := feedback.NewService(feedbackRepo, authService)
 	activityService.SetReviewNotifier(messageService)
 	// 后台账号独立写入 admin_users，不再污染 APP 用户表。
@@ -116,6 +128,7 @@ func main() {
 	user.NewHandler(authService, tokenManager).Register(api)
 	activity.NewHandler(activityService, tokenManager, authService).Register(api)
 	message.NewHandler(messageService, tokenManager, authService).Register(api)
+	chat.NewHandler(chatService, tokenManager, authService).Register(api)
 	feedback.NewHandler(feedbackService, tokenManager, adminTokenManager, authService).Register(api)
 	upload.NewHandlerWithConfig(cfg.Qiniu).Register(api)
 	admin.NewHandler(adminService, authService, activityService, adminTokenManager).Register(api)

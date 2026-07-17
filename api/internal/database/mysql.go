@@ -9,6 +9,7 @@ import (
 
 	"ooop-admin-api/internal/activity"
 	"ooop-admin-api/internal/admin"
+	"ooop-admin-api/internal/chat"
 	"ooop-admin-api/internal/config"
 	"ooop-admin-api/internal/feedback"
 	"ooop-admin-api/internal/message"
@@ -43,6 +44,9 @@ func AutoMigrate(db *gorm.DB) error {
 		&activity.ActivityFavorite{},
 		&activity.ActivityParticipant{},
 		&message.UserMessage{},
+		&chat.Conversation{},
+		&chat.Message{},
+		&chat.PushTask{},
 		&feedback.Feedback{},
 	); err != nil {
 		return err

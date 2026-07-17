@@ -28,10 +28,12 @@ type PushPayload struct {
 	HarmonyPushToken string
 	Title            string
 	Alert            string
+	CustomContent    string
 	MessageType      string
 	Category         string
 	MessageID        int64
 	ActivityID       int64
+	Extras           map[string]string
 }
 
 type PushChannelResult struct {
@@ -72,18 +74,24 @@ func (p *DualChannelPusher) Push(ctx context.Context, payload PushPayload) (Push
 		{Channel: PushChannelHarmony, Message: "鸿蒙推送未初始化"},
 	}
 	errs := make([]error, len(channels))
-	tasks := []ChannelPusher{p.jiguang, p.harmony}
+	tasks := []struct {
+		channel string
+		sender  ChannelPusher
+	}{
+		{channel: PushChannelJiguang, sender: p.jiguang},
+		{channel: PushChannelHarmony, sender: p.harmony},
+	}
 
 	var wg sync.WaitGroup
-	for index, sender := range tasks {
-		if sender == nil {
+	for index, task := range tasks {
+		if task.sender == nil {
 			continue
 		}
 		wg.Add(1)
-		go func(i int, channelPusher ChannelPusher) {
+		go func(i int, channel string) {
 			defer wg.Done()
-			channels[i], errs[i] = channelPusher.Push(ctx, payload)
-		}(index, sender)
+			channels[i], errs[i] = p.PushChannel(ctx, channel, payload)
+		}(index, task.channel)
 	}
 	wg.Wait()
 
@@ -121,4 +129,21 @@ func (p *DualChannelPusher) Push(ctx context.Context, payload PushPayload) (Push
 		return result, errors.Join(failures...)
 	}
 	return result, nil
+}
+
+// PushChannel 复用统一 Push 载荷并按指定通道发送，供持久化任务独立重试失败通道。
+func (p *DualChannelPusher) PushChannel(ctx context.Context, channel string, payload PushPayload) (PushChannelResult, error) {
+	var sender ChannelPusher
+	switch channel {
+	case PushChannelJiguang:
+		sender = p.jiguang
+	case PushChannelHarmony:
+		sender = p.harmony
+	default:
+		return PushChannelResult{Channel: channel, Message: "推送通道不支持"}, fmt.Errorf("推送通道不支持: %s", channel)
+	}
+	if sender == nil {
+		return PushChannelResult{Channel: channel, Message: "推送通道未初始化"}, fmt.Errorf("推送通道未初始化: %s", channel)
+	}
+	return sender.Push(ctx, payload)
 }

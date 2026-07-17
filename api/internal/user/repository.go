@@ -235,6 +235,20 @@ func (r *GormUserRepository) CancelAccount(ctx context.Context, id int64) error 
 		if err := tx.Exec("DELETE FROM user_messages WHERE user_id = ?", id).Error; err != nil {
 			return err
 		}
+		if err := tx.Exec(
+			"DELETE FROM chat_push_tasks WHERE recipient_id = ? OR message_id IN (SELECT id FROM chat_messages WHERE sender_id = ? OR recipient_id = ?)",
+			id,
+			id,
+			id,
+		).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM chat_messages WHERE sender_id = ? OR recipient_id = ?", id, id).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM chat_conversations WHERE user_a_id = ? OR user_b_id = ?", id, id).Error; err != nil {
+			return err
+		}
 		if err := tx.Exec("DELETE FROM feedbacks WHERE user_id = ?", id).Error; err != nil {
 			return err
 		}

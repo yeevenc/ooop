@@ -43,7 +43,11 @@ func (p *JiguangPusher) Push(ctx context.Context, payload PushPayload) (PushChan
 		result.Message = err.Error()
 		return result, err
 	}
-	if strings.TrimSpace(payload.Title) == "" || strings.TrimSpace(payload.Alert) == "" {
+	messageContent := strings.TrimSpace(payload.CustomContent)
+	if messageContent == "" {
+		messageContent = strings.TrimSpace(payload.Alert)
+	}
+	if strings.TrimSpace(payload.Title) == "" || messageContent == "" {
 		err := errors.New("极光推送标题或内容不能为空")
 		result.Message = err.Error()
 		return result, err
@@ -67,14 +71,10 @@ func (p *JiguangPusher) Push(ctx context.Context, payload PushPayload) (PushChan
 		"platform": []string{"hmos"},
 		"audience": audience,
 		"message": map[string]interface{}{
-			"msg_content":  payload.Alert,
+			"msg_content":  messageContent,
 			"title":        payload.Title,
 			"content_type": "text",
-			"extras": map[string]interface{}{
-				"messageId":  fmt.Sprintf("%d", payload.MessageID),
-				"activityId": fmt.Sprintf("%d", payload.ActivityID),
-				"type":       payload.MessageType,
-			},
+			"extras":       buildPushExtras(payload),
 		},
 
 		"options": map[string]interface{}{
@@ -138,4 +138,23 @@ func (p *JiguangPusher) Push(ctx context.Context, payload PushPayload) (PushChan
 	result.Success = true
 	result.Message = "极光自定义消息发送成功"
 	return result, nil
+}
+
+func buildPushExtras(payload PushPayload) map[string]interface{} {
+	extras := make(map[string]interface{}, len(payload.Extras)+3)
+	for key, value := range payload.Extras {
+		if strings.TrimSpace(key) != "" && strings.TrimSpace(value) != "" {
+			extras[key] = value
+		}
+	}
+	if payload.MessageID > 0 {
+		extras["messageId"] = fmt.Sprintf("%d", payload.MessageID)
+	}
+	if payload.ActivityID > 0 {
+		extras["activityId"] = fmt.Sprintf("%d", payload.ActivityID)
+	}
+	if strings.TrimSpace(payload.MessageType) != "" {
+		extras["type"] = payload.MessageType
+	}
+	return extras
 }
