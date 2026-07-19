@@ -81,6 +81,14 @@ Content-Type: application/json
 }
 ```
 
+### 删除会话
+
+```http
+DELETE /api/v1/chat/conversations/{id}
+```
+
+删除只对当前用户生效：删除前的历史消息不可恢复，另一方的会话与消息不受影响。删除后收到或发送的新消息会重新显示该会话，但不会恢复旧消息。
+
 ### 未读总数
 
 ```http

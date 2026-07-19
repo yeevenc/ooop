@@ -181,6 +181,7 @@ func (s *Service) ListConversations(ctx context.Context, userID int64, page int,
 				ID:       formatID(otherID),
 				Nickname: other.Nickname,
 				Avatar:   user.AvatarURL(other.Avatar),
+				Gender:   other.Gender,
 			},
 			LastMessageID:      formatID(item.LastMessageID),
 			LastMessageContent: item.LastMessageContent,
@@ -197,9 +198,11 @@ func (s *Service) ListMessages(ctx context.Context, userID int64, query MessageQ
 	if query.BeforeID > 0 && query.AfterID > 0 {
 		return nil, ErrCursorConflict
 	}
-	if _, err := s.messages.FindConversationForUser(ctx, query.ConversationID, userID); err != nil {
+	conversation, err := s.messages.FindConversationForUser(ctx, query.ConversationID, userID)
+	if err != nil {
 		return nil, err
 	}
+	query.DeletedBeforeID = conversationDeletedBeforeID(conversation, userID)
 
 	items, err := s.messages.ListMessages(ctx, query)
 	if err != nil {
@@ -218,6 +221,10 @@ func (s *Service) MarkRead(ctx context.Context, userID int64, conversationID int
 		return err
 	}
 	return s.messages.MarkRead(ctx, conversation, userID, lastMessageID)
+}
+
+func (s *Service) DeleteConversation(ctx context.Context, userID int64, conversationID int64) error {
+	return s.messages.DeleteConversation(ctx, conversationID, userID)
 }
 
 func (s *Service) CountUnread(ctx context.Context, userID int64) (int64, error) {
@@ -257,4 +264,11 @@ func conversationReadState(item Conversation, userID int64) (int, int64) {
 		return item.UserAUnread, item.UserALastReadMessageID
 	}
 	return item.UserBUnread, item.UserBLastReadMessageID
+}
+
+func conversationDeletedBeforeID(item Conversation, userID int64) int64 {
+	if item.UserAID == userID {
+		return item.UserADeletedBeforeID
+	}
+	return item.UserBDeletedBeforeID
 }

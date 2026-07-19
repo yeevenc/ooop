@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS chat_conversations (
   user_b_unread int NOT NULL DEFAULT 0,
   user_a_last_read_message_id bigint NOT NULL DEFAULT 0,
   user_b_last_read_message_id bigint NOT NULL DEFAULT 0,
+  user_a_deleted_before_id bigint NOT NULL DEFAULT 0,
+  user_b_deleted_before_id bigint NOT NULL DEFAULT 0,
   created_at datetime(3) NULL,
   updated_at datetime(3) NULL,
   PRIMARY KEY (id),

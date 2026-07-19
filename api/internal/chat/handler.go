@@ -30,6 +30,7 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	group.GET("/conversations", h.listConversations)
 	group.GET("/conversations/:id/messages", h.listMessages)
 	group.PUT("/conversations/:id/read", h.markRead)
+	group.DELETE("/conversations/:id", h.deleteConversation)
 	group.GET("/unread-count", h.unreadCount)
 }
 
@@ -121,6 +122,20 @@ func (h *Handler) markRead(c *gin.Context) {
 		"conversationId": formatID(conversationID),
 		"lastMessageId":  formatID(req.LastMessageID),
 	}, err)
+}
+
+func (h *Handler) deleteConversation(c *gin.Context) {
+	userID, ok := currentUserID(c)
+	if !ok {
+		return
+	}
+	conversationID, ok := pathID(c, "id", "会话 ID 格式不正确")
+	if !ok {
+		return
+	}
+
+	err := h.service.DeleteConversation(c.Request.Context(), userID, conversationID)
+	writeChatResult(c, gin.H{"id": formatID(conversationID)}, err)
 }
 
 func (h *Handler) unreadCount(c *gin.Context) {

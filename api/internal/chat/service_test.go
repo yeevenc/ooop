@@ -12,7 +12,12 @@ import (
 )
 
 type serviceTestRepository struct {
-	params CreateMessageParams
+	params                    CreateMessageParams
+	conversations             []Conversation
+	conversation              Conversation
+	messageQuery              MessageQuery
+	deletedConversationID     int64
+	deletedConversationUserID int64
 }
 
 func (r *serviceTestRepository) CreateMessage(_ context.Context, params CreateMessageParams) (Conversation, Message, bool, error) {
@@ -30,19 +35,26 @@ func (r *serviceTestRepository) CreateMessage(_ context.Context, params CreateMe
 	}, true, nil
 }
 
-func (*serviceTestRepository) ListConversations(context.Context, int64, int, int) ([]Conversation, error) {
-	return nil, nil
+func (r *serviceTestRepository) ListConversations(context.Context, int64, int, int) ([]Conversation, error) {
+	return r.conversations, nil
 }
 
-func (*serviceTestRepository) FindConversationForUser(context.Context, int64, int64) (Conversation, error) {
-	return Conversation{}, nil
+func (r *serviceTestRepository) FindConversationForUser(context.Context, int64, int64) (Conversation, error) {
+	return r.conversation, nil
 }
 
-func (*serviceTestRepository) ListMessages(context.Context, MessageQuery) ([]Message, error) {
+func (r *serviceTestRepository) ListMessages(_ context.Context, query MessageQuery) ([]Message, error) {
+	r.messageQuery = query
 	return nil, nil
 }
 
 func (*serviceTestRepository) MarkRead(context.Context, Conversation, int64, int64) error {
+	return nil
+}
+
+func (r *serviceTestRepository) DeleteConversation(_ context.Context, conversationID int64, userID int64) error {
+	r.deletedConversationID = conversationID
+	r.deletedConversationUserID = userID
 	return nil
 }
 
@@ -185,6 +197,55 @@ func TestListMessagesRejectsConflictingCursors(t *testing.T) {
 	})
 	if !errors.Is(err, ErrCursorConflict) {
 		t.Fatalf("error = %v, want ErrCursorConflict", err)
+	}
+}
+
+func TestListConversationsReturnsOtherUserGender(t *testing.T) {
+	repository := &serviceTestRepository{conversations: []Conversation{{
+		ID:            9,
+		UserAID:       3000,
+		UserBID:       3001,
+		LastMessageID: 10,
+	}}}
+	service := NewService(repository, serviceTestUsers{items: map[int64]user.User{
+		3001: {ID: 3001, Nickname: "小欧", Gender: "女"},
+	}}, nil, 7*24*time.Hour)
+
+	result, err := service.ListConversations(context.Background(), 3000, 1, 20)
+	if err != nil {
+		t.Fatalf("ListConversations() error = %v", err)
+	}
+	if len(result.List) != 1 || result.List[0].OtherUser.Gender != "女" {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func TestListMessagesAppliesUserDeleteBoundary(t *testing.T) {
+	repository := &serviceTestRepository{conversation: Conversation{
+		ID:                   9,
+		UserAID:              3000,
+		UserBID:              3001,
+		UserADeletedBeforeID: 42,
+	}}
+	service := NewService(repository, serviceTestUsers{}, nil, 7*24*time.Hour)
+
+	if _, err := service.ListMessages(context.Background(), 3000, MessageQuery{ConversationID: 9}); err != nil {
+		t.Fatalf("ListMessages() error = %v", err)
+	}
+	if repository.messageQuery.DeletedBeforeID != 42 {
+		t.Fatalf("DeletedBeforeID = %d, want 42", repository.messageQuery.DeletedBeforeID)
+	}
+}
+
+func TestDeleteConversationUsesCurrentUser(t *testing.T) {
+	repository := &serviceTestRepository{}
+	service := NewService(repository, serviceTestUsers{}, nil, 7*24*time.Hour)
+
+	if err := service.DeleteConversation(context.Background(), 3000, 9); err != nil {
+		t.Fatalf("DeleteConversation() error = %v", err)
+	}
+	if repository.deletedConversationID != 9 || repository.deletedConversationUserID != 3000 {
+		t.Fatalf("delete conversation = %d, user = %d", repository.deletedConversationID, repository.deletedConversationUserID)
 	}
 }
 

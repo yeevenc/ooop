@@ -20,10 +20,11 @@ type CreateMessageParams struct {
 }
 
 type MessageQuery struct {
-	ConversationID int64
-	BeforeID       int64
-	AfterID        int64
-	PageSize       int
+	ConversationID  int64
+	BeforeID        int64
+	AfterID         int64
+	DeletedBeforeID int64
+	PageSize        int
 }
 
 type MessageRepository interface {
@@ -32,6 +33,7 @@ type MessageRepository interface {
 	FindConversationForUser(ctx context.Context, conversationID int64, userID int64) (Conversation, error)
 	ListMessages(ctx context.Context, query MessageQuery) ([]Message, error)
 	MarkRead(ctx context.Context, conversation Conversation, userID int64, lastMessageID int64) error
+	DeleteConversation(ctx context.Context, conversationID int64, userID int64) error
 	CountUnread(ctx context.Context, userID int64) (int64, error)
 }
 
@@ -160,7 +162,11 @@ func (r *GormRepository) ListConversations(ctx context.Context, userID int64, pa
 	err := paginate(
 		r.db.WithContext(ctx).
 			Where("last_message_id > 0").
-			Where("user_a_id = ? OR user_b_id = ?", userID, userID),
+			Where(
+				"(user_a_id = ? AND last_message_id > user_a_deleted_before_id) OR (user_b_id = ? AND last_message_id > user_b_deleted_before_id)",
+				userID,
+				userID,
+			),
 		page,
 		pageSize,
 	).
@@ -180,7 +186,7 @@ func (r *GormRepository) FindConversationForUser(ctx context.Context, conversati
 func (r *GormRepository) ListMessages(ctx context.Context, query MessageQuery) ([]Message, error) {
 	var items []Message
 	db := r.db.WithContext(ctx).
-		Where("conversation_id = ? AND expires_at > ?", query.ConversationID, time.Now())
+		Where("conversation_id = ? AND id > ? AND expires_at > ?", query.ConversationID, query.DeletedBeforeID, time.Now())
 	order := "id DESC"
 	if query.AfterID > 0 {
 		db = db.Where("id > ?", query.AfterID)
@@ -191,6 +197,31 @@ func (r *GormRepository) ListMessages(ctx context.Context, query MessageQuery) (
 
 	err := db.Order(order).Limit(normalizePageSize(query.PageSize, 50, 100)).Find(&items).Error
 	return items, err
+}
+
+func (r *GormRepository) DeleteConversation(ctx context.Context, conversationID int64, userID int64) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var conversation Conversation
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND (user_a_id = ? OR user_b_id = ?)", conversationID, userID, userID).
+			First(&conversation).Error
+		if err != nil {
+			return normalizeNotFound(err)
+		}
+
+		updates := map[string]interface{}{}
+		if userID == conversation.UserAID {
+			updates["user_a_deleted_before_id"] = conversation.LastMessageID
+			updates["user_a_last_read_message_id"] = gorm.Expr("GREATEST(user_a_last_read_message_id, ?)", conversation.LastMessageID)
+			updates["user_a_unread"] = 0
+		} else {
+			updates["user_b_deleted_before_id"] = conversation.LastMessageID
+			updates["user_b_last_read_message_id"] = gorm.Expr("GREATEST(user_b_last_read_message_id, ?)", conversation.LastMessageID)
+			updates["user_b_unread"] = 0
+		}
+
+		return tx.Model(&Conversation{}).Where("id = ?", conversation.ID).Updates(updates).Error
+	})
 }
 
 func (r *GormRepository) MarkRead(ctx context.Context, conversation Conversation, userID int64, lastMessageID int64) error {
@@ -225,7 +256,11 @@ func (r *GormRepository) CountUnread(ctx context.Context, userID int64) (int64, 
 	err := r.db.WithContext(ctx).
 		Model(&Conversation{}).
 		Select("COALESCE(SUM(CASE WHEN user_a_id = ? THEN user_a_unread ELSE user_b_unread END), 0) AS total", userID).
-		Where("user_a_id = ? OR user_b_id = ?", userID, userID).
+		Where(
+			"(user_a_id = ? AND last_message_id > user_a_deleted_before_id) OR (user_b_id = ? AND last_message_id > user_b_deleted_before_id)",
+			userID,
+			userID,
+		).
 		Scan(&result).Error
 	return result.Total, err
 }

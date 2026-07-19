@@ -29,6 +29,8 @@ type Conversation struct {
 	UserBUnread            int        `gorm:"not null;default:0"`
 	UserALastReadMessageID int64      `gorm:"not null;default:0"`
 	UserBLastReadMessageID int64      `gorm:"not null;default:0"`
+	UserADeletedBeforeID   int64      `gorm:"not null;default:0"`
+	UserBDeletedBeforeID   int64      `gorm:"not null;default:0"`
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
 }
@@ -86,6 +88,7 @@ type PublicConversationUser struct {
 	ID       string `json:"id"`
 	Nickname string `json:"nickname"`
 	Avatar   string `json:"avatar"`
+	Gender   string `json:"gender"`
 }
 
 type PublicConversation struct {
