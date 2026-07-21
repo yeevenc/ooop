@@ -40,7 +40,7 @@ func TestWriteChatResultUsesSensitiveContentCode(t *testing.T) {
 func TestHandlerRegistersDeleteConversation(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
-	NewHandler(nil, nil, nil).Register(engine.Group("/api/v1"))
+	NewHandler(nil, nil, nil, nil).Register(engine.Group("/api/v1"))
 
 	for _, route := range engine.Routes() {
 		if route.Method == http.MethodDelete && route.Path == "/api/v1/chat/conversations/:id" {
@@ -48,4 +48,17 @@ func TestHandlerRegistersDeleteConversation(t *testing.T) {
 		}
 	}
 	t.Fatal("delete conversation route was not registered")
+}
+
+func TestHandlerRegistersSubmitReport(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	NewHandler(nil, nil, nil, nil).Register(engine.Group("/api/v1"))
+
+	for _, route := range engine.Routes() {
+		if route.Method == http.MethodPost && route.Path == "/api/v1/chat/conversations/:id/reports" {
+			return
+		}
+	}
+	t.Fatal("submit report route was not registered")
 }

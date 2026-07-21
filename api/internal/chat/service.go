@@ -25,6 +25,7 @@ var (
 	ErrClientMessageConflict = errors.New("客户端消息号已被其他消息使用")
 	ErrCursorConflict        = errors.New("before_id 与 after_id 不能同时使用")
 	ErrRateLimited           = errors.New("发送过于频繁，请稍后再试")
+	ErrChatRestricted        = errors.New("聊天功能已被限制")
 )
 
 const maxMessageLength = 2000
@@ -39,6 +40,13 @@ type SendMessageInput struct {
 type SendMessageResult struct {
 	Message PublicMessage `json:"message"`
 	Created bool          `json:"created"`
+}
+
+type ChatAccessStatus struct {
+	Restricted       bool       `json:"restricted"`
+	RestrictedUntil  *time.Time `json:"restrictedUntil"`
+	RemainingSeconds int64      `json:"remainingSeconds"`
+	Reason           string     `json:"reason"`
 }
 
 type Service struct {
@@ -89,6 +97,13 @@ func (s *Service) SendMessage(ctx context.Context, senderID int64, input SendMes
 	if !validClientMessageID(clientMessageID) {
 		return SendMessageResult{}, ErrClientMessageInvalid
 	}
+	sender, err := s.users.FindByID(ctx, senderID)
+	if err != nil {
+		return SendMessageResult{}, err
+	}
+	if chatAccessStatus(sender, time.Now()).Restricted {
+		return SendMessageResult{}, ErrChatRestricted
+	}
 	if !s.limiter.Allow(senderID, time.Now()) {
 		return SendMessageResult{}, ErrRateLimited
 	}
@@ -126,6 +141,28 @@ func (s *Service) SendMessage(ctx context.Context, senderID int64, input SendMes
 		Message: toPublicMessage(item),
 		Created: created,
 	}, nil
+}
+
+func (s *Service) GetChatAccessStatus(ctx context.Context, userID int64) (ChatAccessStatus, error) {
+	item, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return ChatAccessStatus{}, err
+	}
+	return chatAccessStatus(item, time.Now()), nil
+}
+
+func chatAccessStatus(item user.User, now time.Time) ChatAccessStatus {
+	if item.ChatRestrictedUntil == nil || !item.ChatRestrictedUntil.After(now) {
+		return ChatAccessStatus{Restricted: false, RemainingSeconds: 0}
+	}
+	remaining := item.ChatRestrictedUntil.Sub(now)
+	remainingSeconds := int64((remaining + time.Second - 1) / time.Second)
+	return ChatAccessStatus{
+		Restricted:       true,
+		RestrictedUntil:  item.ChatRestrictedUntil,
+		RemainingSeconds: remainingSeconds,
+		Reason:           item.ChatRestrictionReason,
+	}
 }
 
 func normalizeMessageType(value string) string {

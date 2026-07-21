@@ -135,6 +135,12 @@ func (s *Service) ClearMessages(ctx context.Context, userID int64) (int64, error
 	return s.messages.DeleteByUser(ctx, userID)
 }
 
+// PushChatReportResult 推送已落库的举报处理结果，站内消息写入由举报事务保证。
+func (s *Service) PushChatReportResult(ctx context.Context, userID int64, messageID int64, title string, content string) error {
+	_, err := s.pushToUser(ctx, userID, TypeChatReport, title, content, messageID, 0)
+	return err
+}
+
 func formatID(id int64) string {
 	return strconv.FormatInt(id, 10)
 }
@@ -199,7 +205,7 @@ func (s *Service) pushUser(ctx context.Context, userID int64, messageType string
 	switch messageType {
 	case TypeActivityReview, TypeRegistration, TypeRegistrationReview:
 		return item, item.AllowsActivityReminderPush(), nil
-	case TypeSystem:
+	case TypeSystem, TypeChatReport:
 		return item, item.AllowsSystemMessagePush(), nil
 	default:
 		return item, item.IsNotificationPermissionEnabled(), nil

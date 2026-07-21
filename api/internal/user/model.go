@@ -53,11 +53,15 @@ type User struct {
 	BannedUntil *time.Time `gorm:"column:banned_until" json:"banned_until"`
 	// BanReason 封禁原因备注（可选，可透出给 APP 提示文案）
 	BanReason string `gorm:"size:255;not null;default:''" json:"ban_reason"`
-	CreditScore    int        `gorm:"not null;default:100" json:"credit_score"` // 靠谱值（满分 100，评分逻辑后续接入）
-	RegisterSource string     `gorm:"size:32;not null" json:"register_source"`
-	LastLoginAt    *time.Time `json:"last_login_at"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	// ChatRestrictedUntil 聊天功能限制解除时间，到期后自动恢复。
+	ChatRestrictedUntil *time.Time `gorm:"column:chat_restricted_until;index" json:"-"`
+	// ChatRestrictionReason 保留本次聊天限制原因，仅供聊天状态提示使用。
+	ChatRestrictionReason string     `gorm:"size:500;not null;default:''" json:"-"`
+	CreditScore           int        `gorm:"not null;default:100" json:"credit_score"` // 靠谱值（满分 100，评分逻辑后续接入）
+	RegisterSource        string     `gorm:"size:32;not null" json:"register_source"`
+	LastLoginAt           *time.Time `json:"last_login_at"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
 }
 
 type LoginCode struct {

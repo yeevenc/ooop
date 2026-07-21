@@ -90,6 +90,7 @@ func main() {
 	activityService := activity.NewService(activityRepo, userRepo, contentChecker)
 	messageService := message.NewService(messageRepo, pushSender, userRepo)
 	chatService := chat.NewService(chatRepo, userRepo, contentChecker, cfg.Chat.MessageRetention)
+	chatReportService := chat.NewReportService(chatRepo, chatRepo, userRepo, messageService)
 	chatWorker := chat.NewWorker(chatRepo, userRepo, pushSender, chat.WorkerOptions{
 		PushInterval:    cfg.Chat.PushInterval,
 		CleanupInterval: cfg.Chat.CleanupInterval,
@@ -128,10 +129,10 @@ func main() {
 	user.NewHandler(authService, tokenManager).Register(api)
 	activity.NewHandler(activityService, tokenManager, authService).Register(api)
 	message.NewHandler(messageService, tokenManager, authService).Register(api)
-	chat.NewHandler(chatService, tokenManager, authService).Register(api)
+	chat.NewHandler(chatService, chatReportService, tokenManager, authService).Register(api)
 	feedback.NewHandler(feedbackService, tokenManager, adminTokenManager, authService).Register(api)
 	upload.NewHandlerWithConfig(cfg.Qiniu).Register(api)
-	admin.NewHandler(adminService, authService, activityService, adminTokenManager).Register(api)
+	admin.NewHandler(adminService, authService, activityService, chatReportService, adminTokenManager).Register(api)
 
 	server := &http.Server{
 		Addr:              cfg.HTTP.Addr(),

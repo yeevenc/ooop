@@ -15,6 +15,7 @@ type serviceTestRepository struct {
 	params                    CreateMessageParams
 	conversations             []Conversation
 	conversation              Conversation
+	messageItems              []Message
 	messageQuery              MessageQuery
 	deletedConversationID     int64
 	deletedConversationUserID int64
@@ -45,7 +46,7 @@ func (r *serviceTestRepository) FindConversationForUser(context.Context, int64, 
 
 func (r *serviceTestRepository) ListMessages(_ context.Context, query MessageQuery) ([]Message, error) {
 	r.messageQuery = query
-	return nil, nil
+	return r.messageItems, nil
 }
 
 func (*serviceTestRepository) MarkRead(context.Context, Conversation, int64, int64) error {
@@ -87,6 +88,7 @@ func (s serviceTestUsers) FindByIDs(_ context.Context, ids []int64) ([]user.User
 func TestSendMessageCreatesSevenDayMessage(t *testing.T) {
 	repository := &serviceTestRepository{}
 	service := NewService(repository, serviceTestUsers{items: map[int64]user.User{
+		3000: {ID: 3000},
 		3001: {ID: 3001},
 	}}, nil, 7*24*time.Hour)
 
@@ -110,6 +112,7 @@ func TestSendMessageCreatesSevenDayMessage(t *testing.T) {
 func TestSendImageMessage(t *testing.T) {
 	repository := &serviceTestRepository{}
 	service := NewService(repository, serviceTestUsers{items: map[int64]user.User{
+		3000: {ID: 3000},
 		3001: {ID: 3001},
 	}}, nil, 7*24*time.Hour)
 
@@ -134,6 +137,7 @@ func TestSendMessageRejectsSensitiveContentBeforeStorage(t *testing.T) {
 		t.Fatalf("NewChecker() error = %v", err)
 	}
 	service := NewService(repository, serviceTestUsers{items: map[int64]user.User{
+		3000: {ID: 3000},
 		3001: {ID: 3001},
 	}}, checker, 7*24*time.Hour)
 
@@ -152,6 +156,7 @@ func TestSendMessageRejectsSensitiveContentBeforeStorage(t *testing.T) {
 
 func TestSendImageMessageRejectsInvalidURL(t *testing.T) {
 	service := NewService(&serviceTestRepository{}, serviceTestUsers{items: map[int64]user.User{
+		3000: {ID: 3000},
 		3001: {ID: 3001},
 	}}, nil, 7*24*time.Hour)
 
@@ -167,7 +172,9 @@ func TestSendImageMessageRejectsInvalidURL(t *testing.T) {
 }
 
 func TestSendMessageRejectsSelfAndMissingRecipient(t *testing.T) {
-	service := NewService(&serviceTestRepository{}, serviceTestUsers{items: map[int64]user.User{}}, nil, 7*24*time.Hour)
+	service := NewService(&serviceTestRepository{}, serviceTestUsers{items: map[int64]user.User{
+		3000: {ID: 3000},
+	}}, nil, 7*24*time.Hour)
 
 	_, err := service.SendMessage(context.Background(), 3000, SendMessageInput{
 		RecipientID:     3000,
@@ -251,6 +258,7 @@ func TestDeleteConversationUsesCurrentUser(t *testing.T) {
 
 func TestSendMessageLimitsSingleUserBurst(t *testing.T) {
 	service := NewService(&serviceTestRepository{}, serviceTestUsers{items: map[int64]user.User{
+		3000: {ID: 3000},
 		3001: {ID: 3001},
 	}}, nil, 7*24*time.Hour)
 
@@ -272,5 +280,35 @@ func TestSendMessageLimitsSingleUserBurst(t *testing.T) {
 	})
 	if !errors.Is(err, ErrRateLimited) {
 		t.Fatalf("error = %v, want ErrRateLimited", err)
+	}
+}
+
+func TestSendMessageRejectsChatRestrictedUser(t *testing.T) {
+	repository := &serviceTestRepository{}
+	restrictedUntil := time.Now().Add(24 * time.Hour)
+	service := NewService(repository, serviceTestUsers{items: map[int64]user.User{
+		3000: {
+			ID:                    3000,
+			ChatRestrictedUntil:   &restrictedUntil,
+			ChatRestrictionReason: "举报成立",
+		},
+		3001: {ID: 3001},
+	}}, nil, 7*24*time.Hour)
+
+	_, err := service.SendMessage(context.Background(), 3000, SendMessageInput{
+		RecipientID:     3001,
+		ClientMessageID: "restricted-message-0001",
+		Content:         "你好",
+	})
+	if !errors.Is(err, ErrChatRestricted) {
+		t.Fatalf("error = %v, want ErrChatRestricted", err)
+	}
+	if repository.params.Content != "" {
+		t.Fatalf("restricted content was stored: %q", repository.params.Content)
+	}
+
+	status, statusErr := service.GetChatAccessStatus(context.Background(), 3000)
+	if statusErr != nil || !status.Restricted || status.RemainingSeconds <= 0 {
+		t.Fatalf("status = %+v, error = %v", status, statusErr)
 	}
 }

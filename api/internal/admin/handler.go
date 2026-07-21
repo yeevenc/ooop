@@ -9,6 +9,7 @@ import (
 
 	"ooop-admin-api/internal/activity"
 	"ooop-admin-api/internal/auth"
+	"ooop-admin-api/internal/chat"
 	"ooop-admin-api/internal/contentmoderation"
 	"ooop-admin-api/internal/httpx"
 	"ooop-admin-api/internal/user"
@@ -18,14 +19,16 @@ type Handler struct {
 	service      *Service
 	appUsers     *user.AuthService
 	activities   *activity.Service
+	chatReports  *chat.ReportService
 	tokenManager *auth.TokenManager
 }
 
-func NewHandler(service *Service, appUsers *user.AuthService, activities *activity.Service, tokenManager *auth.TokenManager) *Handler {
+func NewHandler(service *Service, appUsers *user.AuthService, activities *activity.Service, chatReports *chat.ReportService, tokenManager *auth.TokenManager) *Handler {
 	return &Handler{
 		service:      service,
 		appUsers:     appUsers,
 		activities:   activities,
+		chatReports:  chatReports,
 		tokenManager: tokenManager,
 	}
 }
@@ -57,6 +60,11 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	protected.DELETE("/activities/:id", h.activityDelete)
 	protected.PUT("/activities/:id/review", h.activityReview)
 	protected.PUT("/activities/:id/status", h.activityStatus)
+
+	// 聊天举报管理
+	protected.GET("/chat-reports", h.chatReportList)
+	protected.GET("/chat-reports/:id", h.chatReportDetail)
+	protected.PUT("/chat-reports/:id/resolve", h.resolveChatReport)
 }
 
 func (h *Handler) login(c *gin.Context) {
@@ -234,6 +242,17 @@ func writeResult(c *gin.Context, data interface{}, err error) {
 		errors.Is(err, activity.ErrInvalidStatus),
 		errors.Is(err, activity.ErrCategoryExists):
 		httpx.Fail(c, http.StatusBadRequest, 400004, err.Error())
+	case errors.Is(err, chat.ErrReportNotFound):
+		httpx.Fail(c, http.StatusNotFound, 404001, err.Error())
+	case errors.Is(err, chat.ErrReportStatusInvalid),
+		errors.Is(err, chat.ErrReportResultRequired),
+		errors.Is(err, chat.ErrReportTooLong),
+		errors.Is(err, chat.ErrReportResultTooLong),
+		errors.Is(err, chat.ErrReportRestrictionRequired),
+		errors.Is(err, chat.ErrReportRestrictionInvalid):
+		httpx.Fail(c, http.StatusBadRequest, 400001, err.Error())
+	case errors.Is(err, chat.ErrReportProcessed):
+		httpx.Fail(c, http.StatusConflict, 409001, err.Error())
 	case errors.Is(err, auth.ErrInvalidToken),
 		errors.Is(err, auth.ErrExpiredToken):
 		httpx.Fail(c, http.StatusUnauthorized, 401002, err.Error())

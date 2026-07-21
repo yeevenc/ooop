@@ -3,6 +3,7 @@ import { getToken } from '@/utils/auth'
 import { userRoutes } from '@/router/user'
 import { activityRoutes } from '@/router/activity'
 import { feedbackRoutes } from '@/router/feedback'
+import { chatReportRoutes } from '@/router/chatReport'
 declare module 'vue-router' {
   interface RouteMeta {
     title?: string
@@ -25,6 +26,7 @@ const routes: RouteRecordRaw[] = [
       ...userRoutes,
       ...activityRoutes,
       ...feedbackRoutes,
+      ...chatReportRoutes,
     ],
   },
   {

@@ -89,6 +89,22 @@ DELETE /api/v1/chat/conversations/{id}
 
 删除只对当前用户生效：删除前的历史消息不可恢复，另一方的会话与消息不受影响。删除后收到或发送的新消息会重新显示该会话，但不会恢复旧消息。
 
+### 举报会话
+
+```http
+POST /api/v1/chat/conversations/{id}/reports
+Content-Type: application/json
+```
+
+```json
+{
+  "reason": "harassment",
+  "description": "对方持续发送侮辱性内容"
+}
+```
+
+提交举报时固化最近 50 条当前用户可见消息作为证据快照，后台处理结果通过站内消息通知举报人。完整说明见 `docs/chat-report.md`。
+
 ### 未读总数
 
 ```http

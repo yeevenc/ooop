@@ -12,16 +12,20 @@ import (
 	"ooop-admin-api/internal/httpx"
 )
 
-const chatContentRejectedCode = 400101
+const (
+	chatContentRejectedCode = 400101
+	chatRestrictedCode      = 403003
+)
 
 type Handler struct {
 	service      *Service
+	reports      *ReportService
 	tokenManager *auth.TokenManager
 	access       auth.AccessChecker
 }
 
-func NewHandler(service *Service, tokenManager *auth.TokenManager, access auth.AccessChecker) *Handler {
-	return &Handler{service: service, tokenManager: tokenManager, access: access}
+func NewHandler(service *Service, reports *ReportService, tokenManager *auth.TokenManager, access auth.AccessChecker) *Handler {
+	return &Handler{service: service, reports: reports, tokenManager: tokenManager, access: access}
 }
 
 func (h *Handler) Register(api *gin.RouterGroup) {
@@ -31,7 +35,9 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	group.GET("/conversations/:id/messages", h.listMessages)
 	group.PUT("/conversations/:id/read", h.markRead)
 	group.DELETE("/conversations/:id", h.deleteConversation)
+	group.POST("/conversations/:id/reports", h.submitReport)
 	group.GET("/unread-count", h.unreadCount)
+	group.GET("/access-status", h.accessStatus)
 }
 
 func (h *Handler) sendMessage(c *gin.Context) {
@@ -147,6 +153,15 @@ func (h *Handler) unreadCount(c *gin.Context) {
 	writeChatResult(c, gin.H{"count": count}, err)
 }
 
+func (h *Handler) accessStatus(c *gin.Context) {
+	userID, ok := currentUserID(c)
+	if !ok {
+		return
+	}
+	result, err := h.service.GetChatAccessStatus(c.Request.Context(), userID)
+	writeChatResult(c, result, err)
+}
+
 func currentUserID(c *gin.Context) (int64, bool) {
 	userID, ok := auth.CurrentUserID(c)
 	if !ok {
@@ -193,7 +208,11 @@ func writeChatResult(c *gin.Context, data interface{}, err error) {
 	}
 
 	switch {
+	case errors.Is(err, ErrChatRestricted):
+		httpx.Fail(c, http.StatusForbidden, chatRestrictedCode, err.Error())
 	case errors.Is(err, ErrNotFound), errors.Is(err, ErrRecipientNotFound):
+		httpx.Fail(c, http.StatusNotFound, 404001, err.Error())
+	case errors.Is(err, ErrReportNotFound):
 		httpx.Fail(c, http.StatusNotFound, 404001, err.Error())
 	case errors.Is(err, contentmoderation.ErrRejected):
 		httpx.Fail(c, http.StatusBadRequest, chatContentRejectedCode, err.Error())
@@ -204,8 +223,18 @@ func writeChatResult(c *gin.Context, data interface{}, err error) {
 		errors.Is(err, ErrImageURLInvalid),
 		errors.Is(err, ErrClientMessageInvalid),
 		errors.Is(err, ErrClientMessageConflict),
-		errors.Is(err, ErrCursorConflict):
+		errors.Is(err, ErrCursorConflict),
+		errors.Is(err, ErrReportReasonInvalid),
+		errors.Is(err, ErrReportDescription),
+		errors.Is(err, ErrReportTooLong),
+		errors.Is(err, ErrReportStatusInvalid),
+		errors.Is(err, ErrReportResultRequired),
+		errors.Is(err, ErrReportResultTooLong),
+		errors.Is(err, ErrReportRestrictionRequired),
+		errors.Is(err, ErrReportRestrictionInvalid):
 		httpx.Fail(c, http.StatusBadRequest, 400001, err.Error())
+	case errors.Is(err, ErrReportPending), errors.Is(err, ErrReportProcessed):
+		httpx.Fail(c, http.StatusConflict, 409001, err.Error())
 	case errors.Is(err, ErrRateLimited):
 		httpx.Fail(c, http.StatusTooManyRequests, 429001, err.Error())
 	default:

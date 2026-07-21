@@ -8,6 +8,7 @@ const (
 	TypeRegistrationReview = "registration_review"
 	TypeSystem             = "system"
 	TypeInteraction        = "interaction"
+	TypeChatReport         = "chat_report"
 )
 
 type UserMessage struct {

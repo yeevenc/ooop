@@ -47,6 +47,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&chat.Conversation{},
 		&chat.Message{},
 		&chat.PushTask{},
+		&chat.ChatReport{},
 		&feedback.Feedback{},
 	); err != nil {
 		return err
