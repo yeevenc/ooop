@@ -139,14 +139,55 @@ func TestParseAliyunImageAuditResponseSupportsDebugToolResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parseAliyunImageAuditResponse() error = %v", err)
 	}
+	if result.Suggestion != ImageAuditSuggestionBlock {
+		t.Fatalf("Suggestion = %s, want block", result.Suggestion)
+	}
+	if len(result.Hits) != 1 {
+		t.Fatalf("Hits length = %d, want 1", len(result.Hits))
+	}
+	if result.Hits[0].Suggestion != ImageAuditSuggestionBlock {
+		t.Fatalf("Hit suggestion = %s, want block", result.Hits[0].Suggestion)
+	}
+	if result.Hits[0].Rate != 91.06 {
+		t.Fatalf("Rate = %.2f, want 91.06", result.Hits[0].Rate)
+	}
+	reason := result.RejectReason()
+	if !strings.Contains(reason, "性感低俗") ||
+		!strings.Contains(reason, "91.06%") {
+		t.Fatalf("RejectReason = %s", reason)
+	}
+}
+
+func TestParseAliyunImageAuditResponseKeepsNormalReview(t *testing.T) {
+	payload := map[string]interface{}{
+		"Data": map[string]interface{}{
+			"Results": []interface{}{
+				map[string]interface{}{
+					"SubResults": []interface{}{
+						map[string]interface{}{
+							"Suggestion": "review",
+							"Rate":       "60.00",
+							"Label":      " NORMAL ",
+							"Scene":      "porn",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := parseAliyunImageAuditResponse(payload, 0)
+	if err != nil {
+		t.Fatalf("parseAliyunImageAuditResponse() error = %v", err)
+	}
 	if result.Suggestion != ImageAuditSuggestionReview {
 		t.Fatalf("Suggestion = %s, want review", result.Suggestion)
 	}
 	if len(result.Hits) != 1 {
 		t.Fatalf("Hits length = %d, want 1", len(result.Hits))
 	}
-	if result.Hits[0].Rate != 91.06 {
-		t.Fatalf("Rate = %.2f, want 91.06", result.Hits[0].Rate)
+	if result.Hits[0].Suggestion != ImageAuditSuggestionReview {
+		t.Fatalf("Hit suggestion = %s, want review", result.Hits[0].Suggestion)
 	}
 }
 

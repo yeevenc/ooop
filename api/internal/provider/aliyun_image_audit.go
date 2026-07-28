@@ -214,17 +214,19 @@ func parseAliyunImageAuditResponse(payload map[string]interface{}, offset int) (
 			if !validImageAuditSuggestion(suggestion) {
 				return ImageAuditResult{}, fmt.Errorf("阿里云图片审核返回未知建议: %s", suggestion)
 			}
+			label, _ := subResult["Label"].(string)
+			label = strings.TrimSpace(label)
+			suggestion = effectiveImageAuditSuggestion(suggestion, label)
 			result.Suggestion = strongerImageAuditSuggestion(result.Suggestion, suggestion)
 			if suggestion == ImageAuditSuggestionPass {
 				continue
 			}
 			rate, _ := numberValue(subResult["Rate"])
 			scene, _ := subResult["Scene"].(string)
-			label, _ := subResult["Label"].(string)
 			result.Hits = append(result.Hits, ImageAuditHit{
 				ImageIndex: offset + resultIndex + 1,
 				Scene:      strings.TrimSpace(scene),
-				Label:      strings.TrimSpace(label),
+				Label:      label,
 				Suggestion: suggestion,
 				Rate:       rate,
 			})
@@ -264,6 +266,14 @@ func validImageAuditSuggestion(value string) bool {
 	return value == ImageAuditSuggestionPass ||
 		value == ImageAuditSuggestionReview ||
 		value == ImageAuditSuggestionBlock
+}
+
+func effectiveImageAuditSuggestion(suggestion string, label string) string {
+	if suggestion == ImageAuditSuggestionReview &&
+		!strings.EqualFold(strings.TrimSpace(label), "normal") {
+		return ImageAuditSuggestionBlock
+	}
+	return suggestion
 }
 
 func strongerImageAuditSuggestion(current string, next string) string {
