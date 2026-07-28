@@ -16,7 +16,6 @@ type ImageAuditRepository interface {
 		ctx context.Context,
 		now time.Time,
 		limit int,
-		wakeRetries bool,
 	) (ImageAuditQueueReconcileResult, error)
 	ClaimImageAuditTasks(ctx context.Context, now time.Time, limit int) ([]ImageAuditTask, error)
 	SaveImageAuditDecision(
@@ -42,7 +41,6 @@ type ImageAuditRepository interface {
 type ImageAuditQueueReconcileResult struct {
 	Missing   int64
 	Created   int64
-	Awakened  int64
 	Recovered int64
 }
 
@@ -50,7 +48,6 @@ func (r *GormRepository) ReconcilePendingImageAuditTasks(
 	ctx context.Context,
 	now time.Time,
 	limit int,
-	wakeRetries bool,
 ) (ImageAuditQueueReconcileResult, error) {
 	if limit <= 0 {
 		limit = 100
@@ -124,21 +121,6 @@ func (r *GormRepository) ReconcilePendingImageAuditTasks(
 	}
 	reconcileResult.Recovered = recovered.RowsAffected
 
-	if wakeRetries {
-		awakened := r.db.WithContext(ctx).
-			Model(&ImageAuditTask{}).
-			Where("activity_id IN (?)", pendingActivityIDs).
-			Where("status = ? AND next_retry_at > ?", ImageAuditTaskPending, now).
-			Updates(map[string]interface{}{
-				"next_retry_at": now,
-				"locked_at":     nil,
-			})
-		if awakened.Error != nil {
-			return ImageAuditQueueReconcileResult{}, awakened.Error
-		}
-		reconcileResult.Awakened = awakened.RowsAffected
-	}
-
 	return reconcileResult, nil
 }
 
@@ -162,12 +144,7 @@ func (r *GormRepository) ClaimImageAuditTasks(
 	now time.Time,
 	limit int,
 ) ([]ImageAuditTask, error) {
-	if limit <= 0 {
-		limit = 10
-	}
-	if limit > 100 {
-		limit = 100
-	}
+	limit = 1
 
 	var candidates []ImageAuditTask
 	err := r.db.WithContext(ctx).

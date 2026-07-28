@@ -495,6 +495,7 @@ func writeResult(c *gin.Context, data interface{}, err error) {
 		errors.Is(err, ErrInvalidCity),
 		errors.Is(err, ErrInvalidIntro),
 		errors.Is(err, ErrInvalidCount),
+		errors.Is(err, ErrTooManyImages),
 		errors.Is(err, ErrAlreadyJoined),
 		errors.Is(err, ErrJoinOwnActivity),
 		errors.Is(err, ErrActivityFull),

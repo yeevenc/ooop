@@ -110,18 +110,15 @@ func main() {
 			activityService,
 			imageModerator,
 			activity.ImageAuditWorkerOptions{
-				PollInterval:     cfg.Aliyun.ImageAudit.PollInterval,
-				LockTimeout:      cfg.Aliyun.ImageAudit.LockTimeout,
-				RecoveryInterval: cfg.Aliyun.ImageAudit.RecoveryInterval,
-				BatchSize:        cfg.Aliyun.ImageAudit.BatchSize,
+				PollInterval:      cfg.Aliyun.ImageAudit.PollInterval,
+				LockTimeout:       cfg.Aliyun.ImageAudit.LockTimeout,
+				RecoveryInterval:  cfg.Aliyun.ImageAudit.RecoveryInterval,
+				ReconcileInterval: cfg.Aliyun.ImageAudit.ReconcileInterval,
+				BatchSize:         cfg.Aliyun.ImageAudit.BatchSize,
 			},
 		)
 		imageAuditWorker.Start(context.Background())
-		logger.Infof(
-			"活动图片自动审核已启动: worker=1, batch=%d, interval=%s",
-			cfg.Aliyun.ImageAudit.BatchSize,
-			cfg.Aliyun.ImageAudit.PollInterval,
-		)
+		logger.Infof("活动图片自动审核已启动: %s", imageAuditWorker)
 	} else {
 		logger.Warnf("活动图片自动审核未启用，新增活动将保留待审核状态")
 	}

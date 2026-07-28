@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 	"unicode"
 
 	sensitive "github.com/zmexing/go-sensitive-word"
+	sensitivefilter "github.com/zmexing/go-sensitive-word/filter"
 )
 
 var (
@@ -19,9 +19,6 @@ var (
 const (
 	SceneNickname = "nickname"
 	SceneContent  = "content"
-
-	// 词库经 channel 异步写入 DFA，用探针词确认就绪（不会与正常用户内容重合）
-	readyProbeWord = "__ooop_sensitive_ready_probe__"
 )
 
 type Field struct {
@@ -31,21 +28,13 @@ type Field struct {
 
 // Checker 本地敏感词检测（免费开源词库 + 自定义禁用词），不依赖任何收费第三方。
 type Checker struct {
-	filter *sensitive.Manager
+	filter sensitivefilter.Filter
 }
 
 // NewChecker 初始化本地过滤器：加载内置词库，并合并自定义禁用词。
 func NewChecker(extraWords []string) (*Checker, error) {
-	filter, err := sensitive.NewFilter(
-		sensitive.StoreOption{Type: sensitive.StoreMemory},
-		sensitive.FilterOption{Type: sensitive.FilterDfa},
-	)
-	if err != nil {
-		return nil, fmt.Errorf("初始化敏感词过滤器失败: %w", err)
-	}
-
-	// 内置词库覆盖政治/暴恐/色情/民生等，全部本地运行、零费用。
-	if err := filter.LoadDictEmbed(
+	words := appendSensitiveDictionaryWords(
+		nil,
 		sensitive.DictReactionary,
 		sensitive.DictViolence,
 		sensitive.DictPornography,
@@ -59,13 +48,9 @@ func NewChecker(extraWords []string) (*Checker, error) {
 		sensitive.DictTemporaryTencent,
 		sensitive.DictGFWAdditional,
 		sensitive.DictNeteaseFE,
-	); err != nil {
-		return nil, fmt.Errorf("加载敏感词词库失败: %w", err)
-	}
-
-	words := make([]string, 0, len(extraWords)+1)
+	)
 	for _, word := range extraWords {
-		word = strings.TrimSpace(word)
+		word = strings.ToLower(strings.TrimSpace(word))
 		if word == "" {
 			continue
 		}
@@ -75,30 +60,21 @@ func NewChecker(extraWords []string) (*Checker, error) {
 			words = append(words, normalized)
 		}
 	}
-	// 探针词放在最后，就绪后即可认为此前入队词均已写入 DFA
-	words = append(words, readyProbeWord)
-	if err := filter.AddWord(words...); err != nil {
-		return nil, fmt.Errorf("添加自定义禁用词失败: %w", err)
-	}
-	if err := waitFilterReady(filter, readyProbeWord, 3*time.Second); err != nil {
-		return nil, err
-	}
-
+	filter := sensitivefilter.NewDfaModel()
+	filter.AddWords(words...)
 	return &Checker{filter: filter}, nil
 }
 
-// waitFilterReady 等待 DFA 异步消费完成，避免启动后立刻检测漏过。
-func waitFilterReady(filter *sensitive.Manager, probe string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for {
-		if filter.IsSensitive(probe) {
-			return nil
+func appendSensitiveDictionaryWords(words []string, contents ...string) []string {
+	for _, content := range contents {
+		for _, line := range strings.Split(content, "\n") {
+			word := strings.ToLower(strings.TrimSpace(line))
+			if word != "" {
+				words = append(words, word)
+			}
 		}
-		if time.Now().After(deadline) {
-			return errors.New("敏感词过滤器就绪超时")
-		}
-		time.Sleep(2 * time.Millisecond)
 	}
+	return words
 }
 
 // Check 检测多个字段；任一命中敏感词则返回 ErrRejected，业务侧映射为敏感词提示。

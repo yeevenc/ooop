@@ -96,14 +96,15 @@ type AliyunIDCardConfig struct {
 }
 
 type AliyunImageAuditConfig struct {
-	Enabled          bool
-	Endpoint         string
-	RegionID         string
-	Scenes           []string
-	PollInterval     time.Duration
-	LockTimeout      time.Duration
-	RecoveryInterval time.Duration
-	BatchSize        int
+	Enabled           bool
+	Endpoint          string
+	RegionID          string
+	Scenes            []string
+	PollInterval      time.Duration
+	LockTimeout       time.Duration
+	RecoveryInterval  time.Duration
+	ReconcileInterval time.Duration
+	BatchSize         int
 }
 
 type JiguangConfig struct {
@@ -195,10 +196,14 @@ func Load() Config {
 				Endpoint:         getEnv("ALIYUN_IMAGE_AUDIT_ENDPOINT", "imageaudit.cn-shanghai.aliyuncs.com"),
 				RegionID:         getEnv("ALIYUN_IMAGE_AUDIT_REGION_ID", "cn-shanghai"),
 				Scenes:           getListEnv("ALIYUN_IMAGE_AUDIT_SCENES", "porn,terrorism,ad,live"),
-				PollInterval:     getDurationEnv("ALIYUN_IMAGE_AUDIT_POLL_INTERVAL", 2*time.Second),
+				PollInterval:     getDurationEnv("ALIYUN_IMAGE_AUDIT_POLL_INTERVAL", 5*time.Second),
 				LockTimeout:      getDurationEnv("ALIYUN_IMAGE_AUDIT_LOCK_TIMEOUT", 2*time.Minute),
 				RecoveryInterval: getDurationEnv("ALIYUN_IMAGE_AUDIT_RECOVERY_INTERVAL", time.Minute),
-				BatchSize:        getIntEnv("ALIYUN_IMAGE_AUDIT_BATCH_SIZE", 10),
+				ReconcileInterval: getDurationEnv(
+					"ALIYUN_IMAGE_AUDIT_RECONCILE_INTERVAL",
+					10*time.Minute,
+				),
+				BatchSize: getIntEnv("ALIYUN_IMAGE_AUDIT_BATCH_SIZE", 1),
 			},
 		},
 		ContentModeration: ContentModerationConfig{

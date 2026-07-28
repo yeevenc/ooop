@@ -32,10 +32,11 @@ type ImageAuditReviewer interface {
 }
 
 type ImageAuditWorkerOptions struct {
-	PollInterval     time.Duration
-	LockTimeout      time.Duration
-	RecoveryInterval time.Duration
-	BatchSize        int
+	PollInterval      time.Duration
+	LockTimeout       time.Duration
+	RecoveryInterval  time.Duration
+	ReconcileInterval time.Duration
+	BatchSize         int
 }
 
 type ImageAuditWorker struct {
@@ -51,8 +52,8 @@ func NewImageAuditWorker(
 	moderator provider.ImageModerator,
 	options ImageAuditWorkerOptions,
 ) *ImageAuditWorker {
-	if options.PollInterval <= 0 {
-		options.PollInterval = 2 * time.Second
+	if options.PollInterval < 5*time.Second {
+		options.PollInterval = 5 * time.Second
 	}
 	if options.LockTimeout < time.Minute {
 		options.LockTimeout = 2 * time.Minute
@@ -60,12 +61,10 @@ func NewImageAuditWorker(
 	if options.RecoveryInterval <= 0 {
 		options.RecoveryInterval = time.Minute
 	}
-	if options.BatchSize <= 0 {
-		options.BatchSize = 10
+	if options.ReconcileInterval < 5*time.Minute {
+		options.ReconcileInterval = 10 * time.Minute
 	}
-	if options.BatchSize > 100 {
-		options.BatchSize = 100
-	}
+	options.BatchSize = 1
 	return &ImageAuditWorker{
 		repository: repository,
 		reviewer:   reviewer,
@@ -78,17 +77,28 @@ func (w *ImageAuditWorker) Start(ctx context.Context) {
 	go w.run(ctx)
 }
 
+func (w *ImageAuditWorker) String() string {
+	return fmt.Sprintf(
+		"worker=1, batch=1, interval=%s, recovery=%s, reconcile=%s",
+		w.options.PollInterval,
+		w.options.RecoveryInterval,
+		w.options.ReconcileInterval,
+	)
+}
+
 func (w *ImageAuditWorker) run(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
-	w.reconcilePendingTasks(ctx, true, true)
+	w.reconcilePendingTasks(ctx, true)
 	w.recoverStaleTasks(ctx)
 	w.process(ctx)
 	pollTicker := time.NewTicker(w.options.PollInterval)
 	recoveryTicker := time.NewTicker(w.options.RecoveryInterval)
+	reconcileTicker := time.NewTicker(w.options.ReconcileInterval)
 	defer pollTicker.Stop()
 	defer recoveryTicker.Stop()
+	defer reconcileTicker.Stop()
 
 	for {
 		select {
@@ -97,8 +107,9 @@ func (w *ImageAuditWorker) run(ctx context.Context) {
 		case <-pollTicker.C:
 			w.process(ctx)
 		case <-recoveryTicker.C:
-			w.reconcilePendingTasks(ctx, false, false)
 			w.recoverStaleTasks(ctx)
+		case <-reconcileTicker.C:
+			w.reconcilePendingTasks(ctx, false)
 		}
 	}
 }
@@ -133,18 +144,15 @@ func (w *ImageAuditWorker) process(ctx context.Context) {
 
 func (w *ImageAuditWorker) reconcilePendingTasks(
 	ctx context.Context,
-	wakeRetries bool,
 	alwaysLog bool,
 ) {
 	const batchSize = 100
 	total := ImageAuditQueueReconcileResult{}
-	firstBatch := true
 	for {
 		result, err := w.repository.ReconcilePendingImageAuditTasks(
 			ctx,
 			time.Now(),
 			batchSize,
-			wakeRetries && firstBatch,
 		)
 		if err != nil {
 			logger.Errorf("待审核活动队列对账失败: %v", err)
@@ -152,18 +160,15 @@ func (w *ImageAuditWorker) reconcilePendingTasks(
 		}
 		total.Missing += result.Missing
 		total.Created += result.Created
-		total.Awakened += result.Awakened
 		total.Recovered += result.Recovered
 		if result.Missing < batchSize {
 			break
 		}
-		firstBatch = false
 	}
-	if alwaysLog || total.Created > 0 || total.Awakened > 0 || total.Recovered > 0 {
+	if alwaysLog || total.Created > 0 || total.Recovered > 0 {
 		logger.Infof(
-			"待审核活动队列对账完成: created=%d, awakened=%d, recovered=%d",
+			"待审核活动队列对账完成: created=%d, recovered=%d",
 			total.Created,
-			total.Awakened,
 			total.Recovered,
 		)
 	}

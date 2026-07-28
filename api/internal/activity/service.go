@@ -25,6 +25,7 @@ var (
 	ErrInvalidCity     = errors.New("请选择活动城市")
 	ErrInvalidIntro    = errors.New("请填写活动简介")
 	ErrInvalidCount    = errors.New("活动人数不能少于 2 人")
+	ErrTooManyImages   = errors.New("活动图片最多上传 5 张")
 	ErrNotFound        = errors.New("活动不存在")
 	ErrInvalidStatus   = errors.New("状态不合法")
 	ErrCategoryExists  = errors.New("分类标识已存在")
@@ -136,6 +137,8 @@ var DefaultCategories = []ActivityCategory{
 	{ID: "citywalk", Label: "城市漫步", Sort: 90, Status: CategoryEnabled},
 	{ID: "movie", Label: "电影", Sort: 100, Status: CategoryEnabled},
 }
+
+const maxActivityImages = 5
 
 func NewService(activities Repository, users user.UserRepository, checkers ...*contentmoderation.Checker) *Service {
 	var checker *contentmoderation.Checker
@@ -1311,6 +1314,9 @@ func (input CreateInput) toModel(userID int64) (Activity, error) {
 	}
 
 	gallery := normalizeImageURLs(input.ImageURLs)
+	if len(gallery) > maxActivityImages {
+		return Activity{}, ErrTooManyImages
+	}
 	galleryJSON, _ := json.Marshal(gallery)
 	imageURL := ""
 	if len(gallery) > 0 {

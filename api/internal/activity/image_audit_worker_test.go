@@ -23,8 +23,8 @@ type imageAuditTestRepository struct {
 	reconcileResults    []ImageAuditQueueReconcileResult
 	reconcileError      error
 	reconcileSignal     chan struct{}
-	reconcileWake       []bool
 	claimCalls          int
+	claimLimits         []int
 	claimedTasks        []ImageAuditTask
 	saveDecisionError   error
 	markNotificationErr error
@@ -41,10 +41,8 @@ func (r *imageAuditTestRepository) ReconcilePendingImageAuditTasks(
 	_ context.Context,
 	_ time.Time,
 	_ int,
-	wakeRetries bool,
 ) (ImageAuditQueueReconcileResult, error) {
 	r.reconcileCalls++
-	r.reconcileWake = append(r.reconcileWake, wakeRetries)
 	if r.reconcileSignal != nil {
 		select {
 		case r.reconcileSignal <- struct{}{}:
@@ -63,11 +61,15 @@ func (r *imageAuditTestRepository) ReconcilePendingImageAuditTasks(
 }
 
 func (r *imageAuditTestRepository) ClaimImageAuditTasks(
-	context.Context,
-	time.Time,
-	int,
+	_ context.Context,
+	_ time.Time,
+	limit int,
 ) ([]ImageAuditTask, error) {
 	r.claimCalls++
+	r.claimLimits = append(r.claimLimits, limit)
+	if limit > 0 && len(r.claimedTasks) > limit {
+		return r.claimedTasks[:limit], nil
+	}
 	return r.claimedTasks, nil
 }
 
@@ -396,6 +398,32 @@ func TestImageAuditWorkerProcessesClaimedTasksSerially(t *testing.T) {
 	if maximum := moderator.maximum.Load(); maximum != 1 {
 		t.Fatalf("maximum audit concurrency = %d, want 1", maximum)
 	}
+	if len(repository.claimLimits) != 1 || repository.claimLimits[0] != 1 {
+		t.Fatalf("claim limits = %v, want [1]", repository.claimLimits)
+	}
+}
+
+func TestImageAuditWorkerUsesSingleLowPressureSchedule(t *testing.T) {
+	worker := NewImageAuditWorker(
+		&imageAuditTestRepository{},
+		&imageAuditTestReviewer{},
+		imageAuditTestModerator{},
+		ImageAuditWorkerOptions{
+			PollInterval:      time.Second,
+			ReconcileInterval: time.Minute,
+			BatchSize:         99,
+		},
+	)
+
+	if worker.options.BatchSize != 1 {
+		t.Fatalf("batch size = %d, want 1", worker.options.BatchSize)
+	}
+	if worker.options.PollInterval != 5*time.Second {
+		t.Fatalf("poll interval = %s, want 5s", worker.options.PollInterval)
+	}
+	if worker.options.ReconcileInterval != 10*time.Minute {
+		t.Fatalf("reconcile interval = %s, want 10m", worker.options.ReconcileInterval)
+	}
 }
 
 func TestImageAuditWorkerReconcilesPendingTasksOnStartup(t *testing.T) {
@@ -427,9 +455,6 @@ func TestImageAuditWorkerReconcilesPendingTasksOnStartup(t *testing.T) {
 	if repository.reconcileCalls != 1 {
 		t.Fatalf("reconcile calls = %d, want 1", repository.reconcileCalls)
 	}
-	if len(repository.reconcileWake) != 1 || !repository.reconcileWake[0] {
-		t.Fatalf("startup wake flags = %v, want [true]", repository.reconcileWake)
-	}
 }
 
 func TestImageAuditWorkerReconcilesAllHistoricalPendingActivities(t *testing.T) {
@@ -438,7 +463,6 @@ func TestImageAuditWorkerReconcilesAllHistoricalPendingActivities(t *testing.T) 
 			{
 				Missing:   100,
 				Created:   100,
-				Awakened:  2,
 				Recovered: 1,
 			},
 			{
@@ -454,15 +478,10 @@ func TestImageAuditWorkerReconcilesAllHistoricalPendingActivities(t *testing.T) 
 		ImageAuditWorkerOptions{},
 	)
 
-	worker.reconcilePendingTasks(context.Background(), true, false)
+	worker.reconcilePendingTasks(context.Background(), false)
 
 	if repository.reconcileCalls != 2 {
 		t.Fatalf("reconcile calls = %d, want 2", repository.reconcileCalls)
-	}
-	if len(repository.reconcileWake) != 2 ||
-		!repository.reconcileWake[0] ||
-		repository.reconcileWake[1] {
-		t.Fatalf("wake flags = %v, want [true false]", repository.reconcileWake)
 	}
 }
 
