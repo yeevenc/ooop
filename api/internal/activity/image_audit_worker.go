@@ -33,7 +33,7 @@ type ImageAuditReviewer interface {
 }
 
 type ImageAuditWorkerLease interface {
-	TryAcquire(ctx context.Context, now time.Time, ttl time.Duration) (bool, error)
+	TryAcquire(ctx context.Context, ttl time.Duration) (bool, error)
 	Release(ctx context.Context) error
 }
 
@@ -115,20 +115,25 @@ func (w *ImageAuditWorker) run(ctx context.Context) {
 		return
 	}
 
+	waitingLogged := false
 	for {
 		if ctx.Err() != nil {
 			return
 		}
-		acquired, err := w.lease.TryAcquire(ctx, time.Now(), w.options.LeaseTTL)
+		acquired, err := w.lease.TryAcquire(ctx, w.options.LeaseTTL)
 		if err != nil {
 			logger.Errorf("活动图片审核 Worker 租约获取失败: %v", err)
 		} else if acquired {
+			waitingLogged = false
 			logger.Infof("活动图片审核 Worker 已取得主节点租约")
 			w.runLeaseSession(ctx)
 			if ctx.Err() != nil {
 				return
 			}
 			logger.Warnf("活动图片审核 Worker 租约已失效，停止领取任务并等待重新接管")
+		} else if !waitingLogged {
+			logger.Infof("活动图片审核 Worker 当前为备用节点，不执行任务扫描")
+			waitingLogged = true
 		}
 
 		timer := time.NewTimer(w.options.LeaseRetryInterval)
@@ -155,7 +160,6 @@ func (w *ImageAuditWorker) runLeaseSession(ctx context.Context) {
 			case <-ticker.C:
 				acquired, err := w.lease.TryAcquire(
 					leaderCtx,
-					time.Now(),
 					w.options.LeaseTTL,
 				)
 				if err != nil {

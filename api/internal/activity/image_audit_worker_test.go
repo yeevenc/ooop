@@ -130,7 +130,6 @@ type imageAuditTestWorkerLease struct {
 
 func (l *imageAuditTestWorkerLease) TryAcquire(
 	context.Context,
-	time.Time,
 	time.Duration,
 ) (bool, error) {
 	l.mutex.Lock()

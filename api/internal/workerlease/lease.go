@@ -31,10 +31,9 @@ type Repository interface {
 		ctx context.Context,
 		name string,
 		ownerID string,
-		now time.Time,
 		ttl time.Duration,
 	) (bool, error)
-	Release(ctx context.Context, name string, ownerID string, now time.Time) error
+	Release(ctx context.Context, name string, ownerID string) error
 }
 
 type GormRepository struct {
@@ -49,7 +48,6 @@ func (r *GormRepository) TryAcquire(
 	ctx context.Context,
 	name string,
 	ownerID string,
-	now time.Time,
 	ttl time.Duration,
 ) (bool, error) {
 	name = strings.TrimSpace(name)
@@ -61,66 +59,68 @@ func (r *GormRepository) TryAcquire(
 		return false, errors.New("Worker 租约有效期必须大于零")
 	}
 
-	acquired := false
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var item Lease
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("name = ?", name).
-			First(&item).Error
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			result := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "name"}},
-				DoNothing: true,
-			}).Create(&Lease{
-				Name:      name,
-				OwnerID:   ownerID,
-				ExpiresAt: now.Add(ttl),
-			})
-			if result.Error != nil {
-				return result.Error
-			}
-			acquired = result.RowsAffected == 1
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if item.OwnerID != ownerID && item.ExpiresAt.After(now) {
-			return nil
-		}
+	ttlMicroseconds := ttl.Microseconds()
+	result := r.db.WithContext(ctx).
+		Model(&Lease{}).
+		Where(
+			`name = ? AND (
+				owner_id = ?
+				OR expires_at <= CURRENT_TIMESTAMP(3)
+				OR expires_at > TIMESTAMPADD(MICROSECOND, ?, CURRENT_TIMESTAMP(3))
+			)`,
+			name,
+			ownerID,
+			ttlMicroseconds*2,
+		).
+		Updates(map[string]interface{}{
+			"owner_id": ownerID,
+			"expires_at": gorm.Expr(
+				"TIMESTAMPADD(MICROSECOND, ?, CURRENT_TIMESTAMP(3))",
+				ttlMicroseconds,
+			),
+			"updated_at": gorm.Expr("CURRENT_TIMESTAMP(3)"),
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected == 1 {
+		return true, nil
+	}
 
-		result := tx.Model(&Lease{}).
-			Where(
-				"name = ? AND (owner_id = ? OR expires_at <= ?)",
-				name,
-				ownerID,
-				now,
-			).
-			Updates(map[string]interface{}{
-				"owner_id":   ownerID,
-				"expires_at": now.Add(ttl),
-			})
-		if result.Error != nil {
-			return result.Error
-		}
-		acquired = result.RowsAffected == 1
-		return nil
-	})
-	return acquired, err
+	result = r.db.WithContext(ctx).
+		Table((Lease{}).TableName()).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "name"}},
+			DoNothing: true,
+		}).
+		Create(map[string]interface{}{
+			"name":     name,
+			"owner_id": ownerID,
+			"expires_at": gorm.Expr(
+				"TIMESTAMPADD(MICROSECOND, ?, CURRENT_TIMESTAMP(3))",
+				ttlMicroseconds,
+			),
+			"created_at": gorm.Expr("CURRENT_TIMESTAMP(3)"),
+			"updated_at": gorm.Expr("CURRENT_TIMESTAMP(3)"),
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
 }
 
 func (r *GormRepository) Release(
 	ctx context.Context,
 	name string,
 	ownerID string,
-	now time.Time,
 ) error {
 	return r.db.WithContext(ctx).
 		Model(&Lease{}).
 		Where("name = ? AND owner_id = ?", name, ownerID).
 		Updates(map[string]interface{}{
 			"owner_id":   "",
-			"expires_at": now,
+			"expires_at": gorm.Expr("CURRENT_TIMESTAMP(3)"),
+			"updated_at": gorm.Expr("CURRENT_TIMESTAMP(3)"),
 		}).Error
 }
 
@@ -140,20 +140,19 @@ func NewGuard(repository Repository, name string) *Guard {
 
 func (g *Guard) TryAcquire(
 	ctx context.Context,
-	now time.Time,
 	ttl time.Duration,
 ) (bool, error) {
 	if g == nil || g.repository == nil {
 		return false, errors.New("Worker 租约仓储未初始化")
 	}
-	return g.repository.TryAcquire(ctx, g.name, g.ownerID, now, ttl)
+	return g.repository.TryAcquire(ctx, g.name, g.ownerID, ttl)
 }
 
 func (g *Guard) Release(ctx context.Context) error {
 	if g == nil || g.repository == nil {
 		return nil
 	}
-	return g.repository.Release(ctx, g.name, g.ownerID, time.Now())
+	return g.repository.Release(ctx, g.name, g.ownerID)
 }
 
 func newOwnerID() string {
