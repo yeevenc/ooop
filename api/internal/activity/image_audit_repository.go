@@ -12,7 +12,12 @@ import (
 
 type ImageAuditRepository interface {
 	FindByID(ctx context.Context, id int64) (Activity, error)
-	EnsurePendingImageAuditTasks(ctx context.Context, now time.Time, limit int) (int64, error)
+	ReconcilePendingImageAuditTasks(
+		ctx context.Context,
+		now time.Time,
+		limit int,
+		wakeRetries bool,
+	) (ImageAuditQueueReconcileResult, error)
 	ClaimImageAuditTasks(ctx context.Context, now time.Time, limit int) ([]ImageAuditTask, error)
 	SaveImageAuditDecision(
 		ctx context.Context,
@@ -34,11 +39,19 @@ type ImageAuditRepository interface {
 	RecoverStaleImageAuditTasks(ctx context.Context, before time.Time) error
 }
 
-func (r *GormRepository) EnsurePendingImageAuditTasks(
+type ImageAuditQueueReconcileResult struct {
+	Missing   int64
+	Created   int64
+	Awakened  int64
+	Recovered int64
+}
+
+func (r *GormRepository) ReconcilePendingImageAuditTasks(
 	ctx context.Context,
 	now time.Time,
 	limit int,
-) (int64, error) {
+	wakeRetries bool,
+) (ImageAuditQueueReconcileResult, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -48,22 +61,24 @@ func (r *GormRepository) EnsurePendingImageAuditTasks(
 
 	var activities []Activity
 	err := r.db.WithContext(ctx).
-		Select("id", "image_url", "gallery_json").
-		Where("status = ?", StatusPending).
-		Where(`
-			NOT EXISTS (
-				SELECT 1
-				FROM activity_image_audit_tasks
-				WHERE activity_image_audit_tasks.activity_id = activities.id
-			)
+		Model(&Activity{}).
+		Select("activities.id", "activities.image_url", "activities.gallery_json").
+		Joins(`
+			LEFT JOIN activity_image_audit_tasks
+				ON activity_image_audit_tasks.activity_id = activities.id
 		`).
-		Order("id ASC").
+		Where("activities.status = ?", StatusPending).
+		Where("activity_image_audit_tasks.id IS NULL").
+		Order("activities.id ASC").
 		Limit(limit).
 		Find(&activities).Error
-	if err != nil || len(activities) == 0 {
-		return 0, err
+	if err != nil {
+		return ImageAuditQueueReconcileResult{}, err
 	}
 
+	reconcileResult := ImageAuditQueueReconcileResult{
+		Missing: int64(len(activities)),
+	}
 	tasks := make([]ImageAuditTask, 0, len(activities))
 	for _, item := range activities {
 		tasks = append(tasks, ImageAuditTask{
@@ -73,14 +88,58 @@ func (r *GormRepository) EnsurePendingImageAuditTasks(
 			NextRetryAt:   now,
 		})
 	}
+	if len(tasks) > 0 {
+		result := r.db.WithContext(ctx).
+			Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "activity_id"}},
+				DoNothing: true,
+			}).
+			Create(&tasks)
+		if result.Error != nil {
+			return ImageAuditQueueReconcileResult{}, result.Error
+		}
+		reconcileResult.Created = result.RowsAffected
+	}
 
-	result := r.db.WithContext(ctx).
-		Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "activity_id"}},
-			DoNothing: true,
+	pendingActivityIDs := r.db.WithContext(ctx).
+		Model(&Activity{}).
+		Select("id").
+		Where("status = ?", StatusPending)
+	recovered := r.db.WithContext(ctx).
+		Model(&ImageAuditTask{}).
+		Where("activity_id IN (?)", pendingActivityIDs).
+		Where("status IN ?", []string{
+			ImageAuditTaskPassed,
+			ImageAuditTaskRejected,
+			ImageAuditTaskSkipped,
 		}).
-		Create(&tasks)
-	return result.RowsAffected, result.Error
+		Updates(map[string]interface{}{
+			"status":        ImageAuditTaskPending,
+			"next_retry_at": now,
+			"locked_at":     nil,
+			"completed_at":  nil,
+		})
+	if recovered.Error != nil {
+		return ImageAuditQueueReconcileResult{}, recovered.Error
+	}
+	reconcileResult.Recovered = recovered.RowsAffected
+
+	if wakeRetries {
+		awakened := r.db.WithContext(ctx).
+			Model(&ImageAuditTask{}).
+			Where("activity_id IN (?)", pendingActivityIDs).
+			Where("status = ? AND next_retry_at > ?", ImageAuditTaskPending, now).
+			Updates(map[string]interface{}{
+				"next_retry_at": now,
+				"locked_at":     nil,
+			})
+		if awakened.Error != nil {
+			return ImageAuditQueueReconcileResult{}, awakened.Error
+		}
+		reconcileResult.Awakened = awakened.RowsAffected
+	}
+
+	return reconcileResult, nil
 }
 
 func imageAuditURLsJSON(item Activity) string {

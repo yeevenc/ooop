@@ -19,10 +19,11 @@ type imageAuditTestRepository struct {
 	retryAttempts       int
 	retryReason         string
 	recoverCalled       bool
-	ensureCalls         int
-	ensureCreated       int64
-	ensureError         error
-	ensureSignal        chan struct{}
+	reconcileCalls      int
+	reconcileResults    []ImageAuditQueueReconcileResult
+	reconcileError      error
+	reconcileSignal     chan struct{}
+	reconcileWake       []bool
 	claimCalls          int
 	claimedTasks        []ImageAuditTask
 	saveDecisionError   error
@@ -36,19 +37,29 @@ func (r *imageAuditTestRepository) FindByID(context.Context, int64) (Activity, e
 	return r.activity, r.findActivityError
 }
 
-func (r *imageAuditTestRepository) EnsurePendingImageAuditTasks(
-	context.Context,
-	time.Time,
-	int,
-) (int64, error) {
-	r.ensureCalls++
-	if r.ensureSignal != nil {
+func (r *imageAuditTestRepository) ReconcilePendingImageAuditTasks(
+	_ context.Context,
+	_ time.Time,
+	_ int,
+	wakeRetries bool,
+) (ImageAuditQueueReconcileResult, error) {
+	r.reconcileCalls++
+	r.reconcileWake = append(r.reconcileWake, wakeRetries)
+	if r.reconcileSignal != nil {
 		select {
-		case r.ensureSignal <- struct{}{}:
+		case r.reconcileSignal <- struct{}{}:
 		default:
 		}
 	}
-	return r.ensureCreated, r.ensureError
+	if r.reconcileError != nil {
+		return ImageAuditQueueReconcileResult{}, r.reconcileError
+	}
+	if len(r.reconcileResults) == 0 {
+		return ImageAuditQueueReconcileResult{}, nil
+	}
+	result := r.reconcileResults[0]
+	r.reconcileResults = r.reconcileResults[1:]
+	return result, nil
 }
 
 func (r *imageAuditTestRepository) ClaimImageAuditTasks(
@@ -387,9 +398,9 @@ func TestImageAuditWorkerProcessesClaimedTasksSerially(t *testing.T) {
 	}
 }
 
-func TestImageAuditWorkerEnsuresPendingTasksOnStartup(t *testing.T) {
+func TestImageAuditWorkerReconcilesPendingTasksOnStartup(t *testing.T) {
 	repository := &imageAuditTestRepository{
-		ensureSignal: make(chan struct{}, 1),
+		reconcileSignal: make(chan struct{}, 1),
 	}
 	worker := NewImageAuditWorker(
 		repository,
@@ -405,7 +416,7 @@ func TestImageAuditWorkerEnsuresPendingTasksOnStartup(t *testing.T) {
 	}()
 
 	select {
-	case <-repository.ensureSignal:
+	case <-repository.reconcileSignal:
 		cancel()
 	case <-time.After(time.Second):
 		cancel()
@@ -413,8 +424,45 @@ func TestImageAuditWorkerEnsuresPendingTasksOnStartup(t *testing.T) {
 	}
 	<-done
 
-	if repository.ensureCalls != 1 {
-		t.Fatalf("ensure calls = %d, want 1", repository.ensureCalls)
+	if repository.reconcileCalls != 1 {
+		t.Fatalf("reconcile calls = %d, want 1", repository.reconcileCalls)
+	}
+	if len(repository.reconcileWake) != 1 || !repository.reconcileWake[0] {
+		t.Fatalf("startup wake flags = %v, want [true]", repository.reconcileWake)
+	}
+}
+
+func TestImageAuditWorkerReconcilesAllHistoricalPendingActivities(t *testing.T) {
+	repository := &imageAuditTestRepository{
+		reconcileResults: []ImageAuditQueueReconcileResult{
+			{
+				Missing:   100,
+				Created:   100,
+				Awakened:  2,
+				Recovered: 1,
+			},
+			{
+				Missing: 2,
+				Created: 2,
+			},
+		},
+	}
+	worker := NewImageAuditWorker(
+		repository,
+		&imageAuditTestReviewer{},
+		imageAuditTestModerator{},
+		ImageAuditWorkerOptions{},
+	)
+
+	worker.reconcilePendingTasks(context.Background(), true, false)
+
+	if repository.reconcileCalls != 2 {
+		t.Fatalf("reconcile calls = %d, want 2", repository.reconcileCalls)
+	}
+	if len(repository.reconcileWake) != 2 ||
+		!repository.reconcileWake[0] ||
+		repository.reconcileWake[1] {
+		t.Fatalf("wake flags = %v, want [true false]", repository.reconcileWake)
 	}
 }
 

@@ -82,7 +82,7 @@ func (w *ImageAuditWorker) run(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
-	w.ensurePendingTasks(ctx)
+	w.reconcilePendingTasks(ctx, true, true)
 	w.recoverStaleTasks(ctx)
 	w.process(ctx)
 	pollTicker := time.NewTicker(w.options.PollInterval)
@@ -97,7 +97,7 @@ func (w *ImageAuditWorker) run(ctx context.Context) {
 		case <-pollTicker.C:
 			w.process(ctx)
 		case <-recoveryTicker.C:
-			w.ensurePendingTasks(ctx)
+			w.reconcilePendingTasks(ctx, false, false)
 			w.recoverStaleTasks(ctx)
 		}
 	}
@@ -108,6 +108,9 @@ func (w *ImageAuditWorker) process(ctx context.Context) {
 	if err != nil {
 		logger.Errorf("活动图片审核任务领取失败: %v", err)
 		return
+	}
+	if len(tasks) > 0 {
+		logger.Infof("活动图片审核任务已领取: count=%d", len(tasks))
 	}
 
 	for _, item := range tasks {
@@ -128,14 +131,41 @@ func (w *ImageAuditWorker) process(ctx context.Context) {
 	}
 }
 
-func (w *ImageAuditWorker) ensurePendingTasks(ctx context.Context) {
-	created, err := w.repository.EnsurePendingImageAuditTasks(ctx, time.Now(), 100)
-	if err != nil {
-		logger.Errorf("待审核活动任务补建失败: %v", err)
-		return
+func (w *ImageAuditWorker) reconcilePendingTasks(
+	ctx context.Context,
+	wakeRetries bool,
+	alwaysLog bool,
+) {
+	const batchSize = 100
+	total := ImageAuditQueueReconcileResult{}
+	firstBatch := true
+	for {
+		result, err := w.repository.ReconcilePendingImageAuditTasks(
+			ctx,
+			time.Now(),
+			batchSize,
+			wakeRetries && firstBatch,
+		)
+		if err != nil {
+			logger.Errorf("待审核活动队列对账失败: %v", err)
+			return
+		}
+		total.Missing += result.Missing
+		total.Created += result.Created
+		total.Awakened += result.Awakened
+		total.Recovered += result.Recovered
+		if result.Missing < batchSize {
+			break
+		}
+		firstBatch = false
 	}
-	if created > 0 {
-		logger.Infof("待审核活动任务补建完成: count=%d", created)
+	if alwaysLog || total.Created > 0 || total.Awakened > 0 || total.Recovered > 0 {
+		logger.Infof(
+			"待审核活动队列对账完成: created=%d, awakened=%d, recovered=%d",
+			total.Created,
+			total.Awakened,
+			total.Recovered,
+		)
 	}
 }
 
@@ -224,7 +254,24 @@ func (w *ImageAuditWorker) requestAudit(
 	if err := json.Unmarshal([]byte(task.ImageURLsJSON), &imageURLs); err != nil {
 		return provider.ImageAuditResult{}, fmt.Errorf("活动图片列表解析失败: %w", err)
 	}
-	return w.moderator.Audit(ctx, imageURLs)
+	logger.Infof(
+		"开始调用阿里云图片审核: task_id=%d, activity_id=%d, image_count=%d",
+		task.ID,
+		task.ActivityID,
+		len(imageURLs),
+	)
+	result, err := w.moderator.Audit(ctx, imageURLs)
+	if err != nil {
+		return provider.ImageAuditResult{}, err
+	}
+	logger.Infof(
+		"阿里云图片审核返回: task_id=%d, activity_id=%d, suggestion=%s, hit_count=%d",
+		task.ID,
+		task.ActivityID,
+		result.Suggestion,
+		len(result.Hits),
+	)
+	return result, nil
 }
 
 func (w *ImageAuditWorker) applyReview(
@@ -348,7 +395,14 @@ func (w *ImageAuditWorker) complete(
 			status,
 			err,
 		)
+		return
 	}
+	logger.Infof(
+		"活动图片审核任务完成: task_id=%d, activity_id=%d, status=%s",
+		task.ID,
+		task.ActivityID,
+		status,
+	)
 }
 
 func imageAuditRetryDelay(attempts int) time.Duration {
