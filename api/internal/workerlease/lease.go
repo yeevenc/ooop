@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type Lease struct {
@@ -87,22 +86,24 @@ func (r *GormRepository) TryAcquire(
 		return true, nil
 	}
 
-	result = r.db.WithContext(ctx).
-		Table((Lease{}).TableName()).
-		Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "name"}},
-			DoNothing: true,
-		}).
-		Create(map[string]interface{}{
-			"name":     name,
-			"owner_id": ownerID,
-			"expires_at": gorm.Expr(
-				"TIMESTAMPADD(MICROSECOND, ?, CURRENT_TIMESTAMP(3))",
-				ttlMicroseconds,
-			),
-			"created_at": gorm.Expr("CURRENT_TIMESTAMP(3)"),
-			"updated_at": gorm.Expr("CURRENT_TIMESTAMP(3)"),
-		})
+	result = r.db.WithContext(ctx).Exec(
+		`INSERT IGNORE INTO worker_leases (
+			name,
+			owner_id,
+			expires_at,
+			created_at,
+			updated_at
+		) VALUES (
+			?,
+			?,
+			TIMESTAMPADD(MICROSECOND, ?, CURRENT_TIMESTAMP(3)),
+			CURRENT_TIMESTAMP(3),
+			CURRENT_TIMESTAMP(3)
+		)`,
+		name,
+		ownerID,
+		ttlMicroseconds,
+	)
 	if result.Error != nil {
 		return false, result.Error
 	}
