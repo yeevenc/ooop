@@ -21,6 +21,7 @@ import (
 	"ooop-admin-api/internal/provider"
 	"ooop-admin-api/internal/upload"
 	"ooop-admin-api/internal/user"
+	"ooop-admin-api/internal/workerlease"
 )
 
 func main() {
@@ -54,6 +55,7 @@ func main() {
 	messageRepo := message.NewGormRepository(db)
 	chatRepo := chat.NewGormRepository(db)
 	feedbackRepo := feedback.NewGormRepository(db)
+	workerLeaseRepo := workerlease.NewGormRepository(db)
 
 	aliyunClient := provider.NewAliyunRPCClient(cfg.Aliyun.AccessKeyID, cfg.Aliyun.AccessKeySecret)
 	mobileVerifier := provider.NewJiguangMobileVerifier(cfg.Jiguang)
@@ -116,6 +118,9 @@ func main() {
 				BatchSize:        cfg.Aliyun.ImageAudit.BatchSize,
 				Workers:          cfg.Aliyun.ImageAudit.Workers,
 			},
+		)
+		imageAuditWorker.SetLease(
+			workerlease.NewGuard(workerLeaseRepo, "activity_image_audit"),
 		)
 		imageAuditWorker.Start(context.Background())
 		logger.Infof(

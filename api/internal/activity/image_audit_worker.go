@@ -32,18 +32,27 @@ type ImageAuditReviewer interface {
 	) error
 }
 
+type ImageAuditWorkerLease interface {
+	TryAcquire(ctx context.Context, now time.Time, ttl time.Duration) (bool, error)
+	Release(ctx context.Context) error
+}
+
 type ImageAuditWorkerOptions struct {
-	PollInterval     time.Duration
-	LockTimeout      time.Duration
-	RecoveryInterval time.Duration
-	BatchSize        int
-	Workers          int
+	PollInterval       time.Duration
+	LockTimeout        time.Duration
+	RecoveryInterval   time.Duration
+	LeaseTTL           time.Duration
+	LeaseRenewInterval time.Duration
+	LeaseRetryInterval time.Duration
+	BatchSize          int
+	Workers            int
 }
 
 type ImageAuditWorker struct {
 	repository ImageAuditRepository
 	reviewer   ImageAuditReviewer
 	moderator  provider.ImageModerator
+	lease      ImageAuditWorkerLease
 	options    ImageAuditWorkerOptions
 }
 
@@ -61,6 +70,16 @@ func NewImageAuditWorker(
 	}
 	if options.RecoveryInterval <= 0 {
 		options.RecoveryInterval = time.Minute
+	}
+	if options.LeaseTTL <= 0 {
+		options.LeaseTTL = 45 * time.Second
+	}
+	if options.LeaseRenewInterval <= 0 ||
+		options.LeaseRenewInterval >= options.LeaseTTL {
+		options.LeaseRenewInterval = options.LeaseTTL / 3
+	}
+	if options.LeaseRetryInterval <= 0 {
+		options.LeaseRetryInterval = 10 * time.Second
 	}
 	if options.BatchSize <= 0 {
 		options.BatchSize = 10
@@ -82,11 +101,92 @@ func NewImageAuditWorker(
 	}
 }
 
+func (w *ImageAuditWorker) SetLease(lease ImageAuditWorkerLease) {
+	w.lease = lease
+}
+
 func (w *ImageAuditWorker) Start(ctx context.Context) {
 	go w.run(ctx)
 }
 
 func (w *ImageAuditWorker) run(ctx context.Context) {
+	if w.lease == nil {
+		w.runLeader(ctx)
+		return
+	}
+
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		acquired, err := w.lease.TryAcquire(ctx, time.Now(), w.options.LeaseTTL)
+		if err != nil {
+			logger.Errorf("活动图片审核 Worker 租约获取失败: %v", err)
+		} else if acquired {
+			logger.Infof("活动图片审核 Worker 已取得主节点租约")
+			w.runLeaseSession(ctx)
+			if ctx.Err() != nil {
+				return
+			}
+			logger.Warnf("活动图片审核 Worker 租约已失效，停止领取任务并等待重新接管")
+		}
+
+		timer := time.NewTimer(w.options.LeaseRetryInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
+}
+
+func (w *ImageAuditWorker) runLeaseSession(ctx context.Context) {
+	leaderCtx, cancel := context.WithCancel(ctx)
+	renewDone := make(chan struct{})
+	go func() {
+		defer close(renewDone)
+		ticker := time.NewTicker(w.options.LeaseRenewInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-leaderCtx.Done():
+				return
+			case <-ticker.C:
+				acquired, err := w.lease.TryAcquire(
+					leaderCtx,
+					time.Now(),
+					w.options.LeaseTTL,
+				)
+				if err != nil {
+					logger.Errorf("活动图片审核 Worker 租约续期失败: %v", err)
+					cancel()
+					return
+				}
+				if !acquired {
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+
+	w.runLeader(leaderCtx)
+	cancel()
+	<-renewDone
+
+	releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer releaseCancel()
+	if err := w.lease.Release(releaseCtx); err != nil {
+		logger.Errorf("活动图片审核 Worker 租约释放失败: %v", err)
+	}
+}
+
+func (w *ImageAuditWorker) runLeader(ctx context.Context) {
+	if ctx.Err() != nil {
+		return
+	}
+	w.ensurePendingTasks(ctx)
 	w.recoverStaleTasks(ctx)
 	w.process(ctx)
 	pollTicker := time.NewTicker(w.options.PollInterval)
@@ -101,6 +201,7 @@ func (w *ImageAuditWorker) run(ctx context.Context) {
 		case <-pollTicker.C:
 			w.process(ctx)
 		case <-recoveryTicker.C:
+			w.ensurePendingTasks(ctx)
 			w.recoverStaleTasks(ctx)
 		}
 	}
@@ -138,6 +239,17 @@ func (w *ImageAuditWorker) process(ctx context.Context) {
 	wait.Wait()
 }
 
+func (w *ImageAuditWorker) ensurePendingTasks(ctx context.Context) {
+	created, err := w.repository.EnsurePendingImageAuditTasks(ctx, time.Now(), 100)
+	if err != nil {
+		logger.Errorf("待审核活动任务补建失败: %v", err)
+		return
+	}
+	if created > 0 {
+		logger.Infof("待审核活动任务补建完成: count=%d", created)
+	}
+}
+
 func (w *ImageAuditWorker) recoverStaleTasks(ctx context.Context) {
 	if err := w.repository.RecoverStaleImageAuditTasks(
 		ctx,
@@ -150,6 +262,9 @@ func (w *ImageAuditWorker) recoverStaleTasks(ctx context.Context) {
 func (w *ImageAuditWorker) processTask(ctx context.Context, task ImageAuditTask) {
 	attempts := task.Attempts + 1
 	if task.Decision == "" {
+		if !w.activityNeedsAudit(ctx, task, attempts) {
+			return
+		}
 		result, err := w.requestAudit(ctx, task)
 		if err != nil {
 			w.retry(ctx, task, attempts, err)
@@ -186,6 +301,27 @@ func (w *ImageAuditWorker) processTask(ctx context.Context, task ImageAuditTask)
 	default:
 		w.retry(ctx, task, attempts, fmt.Errorf("图片审核任务存在未知决策: %s", task.Decision))
 	}
+}
+
+func (w *ImageAuditWorker) activityNeedsAudit(
+	ctx context.Context,
+	task ImageAuditTask,
+	attempts int,
+) bool {
+	item, err := w.repository.FindByID(ctx, task.ActivityID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			w.complete(ctx, task, attempts, ImageAuditTaskSkipped)
+			return false
+		}
+		w.retry(ctx, task, attempts, err)
+		return false
+	}
+	if item.Status != StatusPending {
+		w.complete(ctx, task, attempts, ImageAuditTaskSkipped)
+		return false
+	}
+	return true
 }
 
 func (w *ImageAuditWorker) requestAudit(

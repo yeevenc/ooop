@@ -14,6 +14,7 @@ import (
 	"ooop-admin-api/internal/feedback"
 	"ooop-admin-api/internal/message"
 	"ooop-admin-api/internal/user"
+	"ooop-admin-api/internal/workerlease"
 )
 
 func Connect(cfg config.DatabaseConfig) (*gorm.DB, error) {
@@ -50,6 +51,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&chat.PushTask{},
 		&chat.ChatReport{},
 		&feedback.Feedback{},
+		&workerlease.Lease{},
 	); err != nil {
 		return err
 	}

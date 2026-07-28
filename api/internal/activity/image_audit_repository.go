@@ -2,13 +2,17 @@ package activity
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ImageAuditRepository interface {
 	FindByID(ctx context.Context, id int64) (Activity, error)
+	EnsurePendingImageAuditTasks(ctx context.Context, now time.Time, limit int) (int64, error)
 	ClaimImageAuditTasks(ctx context.Context, now time.Time, limit int) ([]ImageAuditTask, error)
 	SaveImageAuditDecision(
 		ctx context.Context,
@@ -28,6 +32,70 @@ type ImageAuditRepository interface {
 		reason string,
 	) error
 	RecoverStaleImageAuditTasks(ctx context.Context, before time.Time) error
+}
+
+func (r *GormRepository) EnsurePendingImageAuditTasks(
+	ctx context.Context,
+	now time.Time,
+	limit int,
+) (int64, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+
+	var activities []Activity
+	err := r.db.WithContext(ctx).
+		Select("id", "image_url", "gallery_json").
+		Where("status = ?", StatusPending).
+		Where(`
+			NOT EXISTS (
+				SELECT 1
+				FROM activity_image_audit_tasks
+				WHERE activity_image_audit_tasks.activity_id = activities.id
+			)
+		`).
+		Order("id ASC").
+		Limit(limit).
+		Find(&activities).Error
+	if err != nil || len(activities) == 0 {
+		return 0, err
+	}
+
+	tasks := make([]ImageAuditTask, 0, len(activities))
+	for _, item := range activities {
+		tasks = append(tasks, ImageAuditTask{
+			ActivityID:    item.ID,
+			ImageURLsJSON: imageAuditURLsJSON(item),
+			Status:        ImageAuditTaskPending,
+			NextRetryAt:   now,
+		})
+	}
+
+	result := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "activity_id"}},
+			DoNothing: true,
+		}).
+		Create(&tasks)
+	return result.RowsAffected, result.Error
+}
+
+func imageAuditURLsJSON(item Activity) string {
+	imageURLs := make([]string, 0)
+	if value := strings.TrimSpace(item.GalleryJSON); value != "" {
+		_ = json.Unmarshal([]byte(value), &imageURLs)
+	}
+	imageURLs = normalizeImageURLs(imageURLs)
+	if len(imageURLs) == 0 {
+		if imageURL := strings.TrimSpace(item.ImageURL); imageURL != "" {
+			imageURLs = append(imageURLs, imageURL)
+		}
+	}
+	value, _ := json.Marshal(imageURLs)
+	return string(value)
 }
 
 func (r *GormRepository) ClaimImageAuditTasks(
