@@ -174,11 +174,11 @@ func TestParseAliyunImageAuditResponseUsesStrongestSuggestion(t *testing.T) {
 	if result.Suggestion != ImageAuditSuggestionBlock {
 		t.Fatalf("Suggestion = %s, want block", result.Suggestion)
 	}
-	if len(result.Hits) != 2 {
-		t.Fatalf("Hits length = %d, want 2", len(result.Hits))
+	if len(result.Hits) != 1 {
+		t.Fatalf("Hits length = %d, want 1", len(result.Hits))
 	}
-	if result.Hits[1].ImageIndex != 12 {
-		t.Fatalf("ImageIndex = %d, want 12", result.Hits[1].ImageIndex)
+	if result.Hits[0].ImageIndex != 12 {
+		t.Fatalf("ImageIndex = %d, want 12", result.Hits[0].ImageIndex)
 	}
 	reason := result.RejectReason()
 	if !strings.Contains(reason, "第12张图片") ||
@@ -224,9 +224,80 @@ func TestParseAliyunImageAuditResponseSupportsDebugToolResponse(t *testing.T) {
 		t.Fatalf("Rate = %.2f, want 91.06", result.Hits[0].Rate)
 	}
 	reason := result.RejectReason()
-	if !strings.Contains(reason, "性感低俗") ||
-		!strings.Contains(reason, "91.06%") {
+	if !strings.Contains(reason, "活动图片未通过内容审核") ||
+		!strings.Contains(reason, "性感低俗") {
 		t.Fatalf("RejectReason = %s", reason)
+	}
+	for _, forbidden := range []string{"命中", "置信度", "%"} {
+		if strings.Contains(reason, forbidden) {
+			t.Fatalf("RejectReason contains %q: %s", forbidden, reason)
+		}
+	}
+}
+
+func TestParseAliyunImageAuditResponseAllowsConfiguredAdLabels(t *testing.T) {
+	labels := []string{"spam", "npx", "qrcode", "programCode", "ad"}
+	for _, label := range labels {
+		label := label
+		t.Run(label, func(t *testing.T) {
+			payload := map[string]interface{}{
+				"Data": map[string]interface{}{
+					"Results": []interface{}{
+						map[string]interface{}{
+							"SubResults": []interface{}{
+								map[string]interface{}{
+									"Suggestion": "block",
+									"Rate":       "99.00",
+									"Label":      " " + label + " ",
+									"Scene":      " AD ",
+								},
+							},
+						},
+					},
+				},
+			}
+
+			result, err := parseAliyunImageAuditResponse(payload, 0)
+			if err != nil {
+				t.Fatalf("parseAliyunImageAuditResponse() error = %v", err)
+			}
+			if result.Suggestion != ImageAuditSuggestionPass {
+				t.Fatalf("Suggestion = %s, want pass", result.Suggestion)
+			}
+			if len(result.Hits) != 0 {
+				t.Fatalf("Hits length = %d, want 0", len(result.Hits))
+			}
+		})
+	}
+}
+
+func TestParseAliyunImageAuditResponseKeepsOtherAdLabelsBlocked(t *testing.T) {
+	payload := map[string]interface{}{
+		"Data": map[string]interface{}{
+			"Results": []interface{}{
+				map[string]interface{}{
+					"SubResults": []interface{}{
+						map[string]interface{}{
+							"Suggestion": "review",
+							"Rate":       "80.00",
+							"Label":      "illegal",
+							"Scene":      "ad",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := parseAliyunImageAuditResponse(payload, 0)
+	if err != nil {
+		t.Fatalf("parseAliyunImageAuditResponse() error = %v", err)
+	}
+	if result.Suggestion != ImageAuditSuggestionBlock {
+		t.Fatalf("Suggestion = %s, want block", result.Suggestion)
+	}
+	if len(result.Hits) != 1 {
+		t.Fatalf("Hits length = %d, want 1", len(result.Hits))
 	}
 }
 

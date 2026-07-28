@@ -36,7 +36,7 @@ type ImageAuditResult struct {
 
 func (r ImageAuditResult) RejectReason() string {
 	if len(r.Hits) == 0 {
-		return "活动图片命中平台内容安全规则"
+		return "活动图片内容不符合平台规范，请更换图片后重新发布"
 	}
 
 	details := make([]string, 0, len(r.Hits))
@@ -45,11 +45,10 @@ func (r ImageAuditResult) RejectReason() string {
 			continue
 		}
 		detail := fmt.Sprintf(
-			"第%d张图片命中%s（%s，置信度%.2f%%）",
+			"第%d张图片存在%s（%s）",
 			hit.ImageIndex,
 			imageAuditSceneText(hit.Scene),
 			imageAuditLabelText(hit.Label),
-			hit.Rate,
 		)
 		details = append(details, detail)
 		if len(details) >= 3 {
@@ -57,9 +56,9 @@ func (r ImageAuditResult) RejectReason() string {
 		}
 	}
 	if len(details) == 0 {
-		return "活动图片命中平台内容安全规则"
+		return "活动图片内容不符合平台规范，请更换图片后重新发布"
 	}
-	return "图片内容审核未通过：" + strings.Join(details, "；")
+	return "活动图片未通过内容审核：" + strings.Join(details, "；")
 }
 
 type ImageModerator interface {
@@ -216,16 +215,17 @@ func parseAliyunImageAuditResponse(payload map[string]interface{}, offset int) (
 			}
 			label, _ := subResult["Label"].(string)
 			label = strings.TrimSpace(label)
-			suggestion = effectiveImageAuditSuggestion(suggestion, label)
+			scene, _ := subResult["Scene"].(string)
+			scene = strings.TrimSpace(scene)
+			suggestion = effectiveImageAuditSuggestion(suggestion, scene, label)
 			result.Suggestion = strongerImageAuditSuggestion(result.Suggestion, suggestion)
 			if suggestion == ImageAuditSuggestionPass {
 				continue
 			}
 			rate, _ := numberValue(subResult["Rate"])
-			scene, _ := subResult["Scene"].(string)
 			result.Hits = append(result.Hits, ImageAuditHit{
 				ImageIndex: offset + resultIndex + 1,
-				Scene:      strings.TrimSpace(scene),
+				Scene:      scene,
 				Label:      label,
 				Suggestion: suggestion,
 				Rate:       rate,
@@ -268,12 +268,27 @@ func validImageAuditSuggestion(value string) bool {
 		value == ImageAuditSuggestionBlock
 }
 
-func effectiveImageAuditSuggestion(suggestion string, label string) string {
+func effectiveImageAuditSuggestion(suggestion string, scene string, label string) string {
+	if isAllowedAdImageLabel(scene, label) {
+		return ImageAuditSuggestionPass
+	}
 	if suggestion == ImageAuditSuggestionReview &&
 		!strings.EqualFold(strings.TrimSpace(label), "normal") {
 		return ImageAuditSuggestionBlock
 	}
 	return suggestion
+}
+
+func isAllowedAdImageLabel(scene string, label string) bool {
+	if !strings.EqualFold(strings.TrimSpace(scene), "ad") {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(label)) {
+	case "spam", "npx", "qrcode", "programcode", "ad":
+		return true
+	default:
+		return false
+	}
 }
 
 func strongerImageAuditSuggestion(current string, next string) string {
