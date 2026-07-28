@@ -1,10 +1,82 @@
 package provider
 
 import (
+	"context"
+	"io"
+	"net/http"
 	"reflect"
 	"strings"
 	"testing"
+
+	"ooop-admin-api/internal/config"
 )
+
+type imageAuditRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f imageAuditRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+func TestAliyunImageModeratorUsesPostRequest(t *testing.T) {
+	client := NewAliyunRPCClient("access-key-id", "access-key-secret")
+	client.httpClient = &http.Client{
+		Transport: imageAuditRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if request.Method != http.MethodPost {
+				t.Fatalf("request method = %s, want POST", request.Method)
+			}
+			if request.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
+				t.Fatalf("Content-Type = %s", request.Header.Get("Content-Type"))
+			}
+			if err := request.ParseForm(); err != nil {
+				t.Fatalf("ParseForm() error = %v", err)
+			}
+			if request.PostForm.Get("Action") != "ScanImage" {
+				t.Fatalf("Action = %s", request.PostForm.Get("Action"))
+			}
+			if request.PostForm.Get("Scene.1") != "porn" {
+				t.Fatalf("Scene.1 = %s", request.PostForm.Get("Scene.1"))
+			}
+			if request.PostForm.Get("Task.1.ImageURL") != "https://source.example.com/activity.jpg" {
+				t.Fatalf("Task.1.ImageURL = %s", request.PostForm.Get("Task.1.ImageURL"))
+			}
+			if request.PostForm.Get("Signature") == "" {
+				t.Fatal("Signature is empty")
+			}
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body: io.NopCloser(strings.NewReader(`{
+					"Data": {
+						"Results": [{
+							"SubResults": [{
+								"Suggestion": "pass",
+								"Label": "normal",
+								"Scene": "porn",
+								"Rate": "99.00"
+							}]
+						}]
+					}
+				}`)),
+			}, nil
+		}),
+	}
+	moderator := NewAliyunImageModerator(client, config.AliyunImageAuditConfig{
+		Endpoint: "imageaudit.cn-shanghai.aliyuncs.com",
+		RegionID: "cn-shanghai",
+		Scenes:   []string{"porn"},
+	})
+
+	result, err := moderator.Audit(
+		context.Background(),
+		[]string{"https://source.example.com/activity.jpg"},
+	)
+	if err != nil {
+		t.Fatalf("Audit() error = %v", err)
+	}
+	if result.Suggestion != ImageAuditSuggestionPass {
+		t.Fatalf("Suggestion = %s, want pass", result.Suggestion)
+	}
+}
 
 func TestBuildAliyunImageAuditParamsUsesIndexedFields(t *testing.T) {
 	params, err := buildAliyunImageAuditParams(
