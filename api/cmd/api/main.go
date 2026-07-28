@@ -102,6 +102,29 @@ func main() {
 	chatWorker.Start(context.Background())
 	feedbackService := feedback.NewService(feedbackRepo, authService)
 	activityService.SetReviewNotifier(messageService)
+	if cfg.Aliyun.ImageAudit.Enabled {
+		imageModerator := provider.NewAliyunImageModerator(aliyunClient, cfg.Aliyun.ImageAudit)
+		imageAuditWorker := activity.NewImageAuditWorker(
+			activityRepo,
+			activityService,
+			imageModerator,
+			activity.ImageAuditWorkerOptions{
+				PollInterval: cfg.Aliyun.ImageAudit.PollInterval,
+				LockTimeout:  cfg.Aliyun.ImageAudit.LockTimeout,
+				BatchSize:    cfg.Aliyun.ImageAudit.BatchSize,
+				Workers:      cfg.Aliyun.ImageAudit.Workers,
+			},
+		)
+		imageAuditWorker.Start(context.Background())
+		logger.Infof(
+			"活动图片自动审核已启动: workers=%d, batch=%d, interval=%s",
+			cfg.Aliyun.ImageAudit.Workers,
+			cfg.Aliyun.ImageAudit.BatchSize,
+			cfg.Aliyun.ImageAudit.PollInterval,
+		)
+	} else {
+		logger.Warnf("活动图片自动审核未启用，新增活动将保留待审核状态")
+	}
 	// 后台账号独立写入 admin_users，不再污染 APP 用户表。
 	if _, err := adminService.EnsureDefaultAdmin(context.Background(), "admin", "admin"); err != nil {
 		logger.Warnf("默认管理员初始化跳过: %v", err)

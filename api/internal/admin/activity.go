@@ -143,7 +143,8 @@ func (h *Handler) activityReview(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Action string `json:"action"`
+		Action       string `json:"action"`
+		RejectReason string `json:"reject_reason"`
 	}
 	if !bindJSON(c, &req) {
 		return
@@ -152,7 +153,14 @@ func (h *Handler) activityReview(c *gin.Context) {
 		httpx.Fail(c, http.StatusBadRequest, 400004, "审核动作不合法")
 		return
 	}
-	result, err := h.activities.ReviewActivity(c.Request.Context(), id, req.Action == "approve")
+	result, err := h.activities.ReviewActivity(
+		c.Request.Context(),
+		id,
+		req.Action == "approve",
+		req.RejectReason,
+		activity.ReviewSourceAdmin,
+		"",
+	)
 	writeResult(c, result, err)
 }
 

@@ -9,22 +9,25 @@ const (
 	StatusTakenDown = "taken_down" // 已下架
 	StatusCancelled = "cancelled"  // 发起人取消
 	CategoryEnabled = 1
+
+	ReviewSourceAdmin      = "admin"
+	ReviewSourceImageAudit = "image_audit"
 )
 
 type Activity struct {
-	ID                int64      `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID            int64      `gorm:"not null;index" json:"user_id"`
-	Title             string     `gorm:"size:80;not null" json:"title"`
-	CategoryID        string     `gorm:"size:32;not null;index" json:"category_id"`
-	CategoryLabel     string     `gorm:"size:32;not null" json:"category_label"`
-	ActivityDate      *time.Time `gorm:"index" json:"activity_date"`
-	ActivityTime      string     `gorm:"size:16;not null;default:''" json:"activity_time"`
-	DeadlineAt        *time.Time `gorm:"index" json:"deadline_at"`
-	LocationText      string     `gorm:"size:255;not null" json:"location_text"`
-	City              string     `gorm:"size:64;not null;index" json:"city"`
-	Latitude          float64    `gorm:"not null" json:"latitude"`
-	Longitude         float64    `gorm:"not null" json:"longitude"`
-	TotalCount        int        `gorm:"not null;default:2" json:"total_count"`
+	ID            int64      `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID        int64      `gorm:"not null;index" json:"user_id"`
+	Title         string     `gorm:"size:80;not null" json:"title"`
+	CategoryID    string     `gorm:"size:32;not null;index" json:"category_id"`
+	CategoryLabel string     `gorm:"size:32;not null" json:"category_label"`
+	ActivityDate  *time.Time `gorm:"index" json:"activity_date"`
+	ActivityTime  string     `gorm:"size:16;not null;default:''" json:"activity_time"`
+	DeadlineAt    *time.Time `gorm:"index" json:"deadline_at"`
+	LocationText  string     `gorm:"size:255;not null" json:"location_text"`
+	City          string     `gorm:"size:64;not null;index" json:"city"`
+	Latitude      float64    `gorm:"not null" json:"latitude"`
+	Longitude     float64    `gorm:"not null" json:"longitude"`
+	TotalCount    int        `gorm:"not null;default:2" json:"total_count"`
 	// CurrentCount 已通过报名占用的名额（不含发起人；新建活动为 0）
 	CurrentCount      int        `gorm:"not null;default:0" json:"current_count"`
 	CostType          string     `gorm:"size:32;not null;default:''" json:"cost_type"`
@@ -35,6 +38,9 @@ type Activity struct {
 	ImageURL          string     `gorm:"size:500;not null;default:''" json:"image_url"`
 	GalleryJSON       string     `gorm:"type:text" json:"gallery_json"`
 	Status            string     `gorm:"size:32;not null;default:'ongoing';index" json:"status"`
+	ReviewSource      string     `gorm:"size:32;not null;default:''" json:"review_source"`
+	ReviewReason      string     `gorm:"size:500;not null;default:''" json:"review_reason"`
+	ReviewedAt        *time.Time `json:"reviewed_at"`
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
 }

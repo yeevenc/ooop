@@ -60,6 +60,7 @@ type AliyunConfig struct {
 	Mobile          AliyunMobileConfig
 	SMS             AliyunSMSConfig
 	IDCard          AliyunIDCardConfig
+	ImageAudit      AliyunImageAuditConfig
 }
 
 // ContentModerationConfig 本地敏感词配置（免费开源词库 + 自定义词）。
@@ -92,6 +93,17 @@ type AliyunIDCardConfig struct {
 	AppCode   string
 	AppKey    string
 	AppSecret string
+}
+
+type AliyunImageAuditConfig struct {
+	Enabled      bool
+	Endpoint     string
+	RegionID     string
+	Scenes       []string
+	PollInterval time.Duration
+	LockTimeout  time.Duration
+	BatchSize    int
+	Workers      int
 }
 
 type JiguangConfig struct {
@@ -176,6 +188,16 @@ func Load() Config {
 				AppCode:   getEnv("ALIYUN_ID_CARD_APP_CODE", ""),
 				AppKey:    getEnv("ALIYUN_ID_CARD_APP_KEY", ""),
 				AppSecret: getEnv("ALIYUN_ID_CARD_APP_SECRET", ""),
+			},
+			ImageAudit: AliyunImageAuditConfig{
+				Enabled:      getBoolEnv("ALIYUN_IMAGE_AUDIT_ENABLED", true),
+				Endpoint:     getEnv("ALIYUN_IMAGE_AUDIT_ENDPOINT", "imageaudit.cn-shanghai.aliyuncs.com"),
+				RegionID:     getEnv("ALIYUN_IMAGE_AUDIT_REGION_ID", "cn-shanghai"),
+				Scenes:       getListEnv("ALIYUN_IMAGE_AUDIT_SCENES", "porn,terrorism,ad,live"),
+				PollInterval: getDurationEnv("ALIYUN_IMAGE_AUDIT_POLL_INTERVAL", 2*time.Second),
+				LockTimeout:  getDurationEnv("ALIYUN_IMAGE_AUDIT_LOCK_TIMEOUT", 2*time.Minute),
+				BatchSize:    getIntEnv("ALIYUN_IMAGE_AUDIT_BATCH_SIZE", 10),
+				Workers:      getIntEnv("ALIYUN_IMAGE_AUDIT_WORKERS", 2),
 			},
 		},
 		ContentModeration: ContentModerationConfig{

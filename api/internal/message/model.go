@@ -12,15 +12,17 @@ const (
 )
 
 type UserMessage struct {
-	ID         int64      `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID     int64      `gorm:"not null;index" json:"user_id"`
-	Type       string     `gorm:"size:32;not null;index" json:"type"`
-	Title      string     `gorm:"size:80;not null" json:"title"`
-	Content    string     `gorm:"size:500;not null;default:''" json:"content"`
-	ActivityID *int64     `gorm:"index" json:"activity_id"`
-	ReadAt     *time.Time `json:"read_at"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	ID         int64  `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID     int64  `gorm:"not null;index" json:"user_id"`
+	Type       string `gorm:"size:32;not null;index" json:"type"`
+	Title      string `gorm:"size:80;not null" json:"title"`
+	Content    string `gorm:"size:500;not null;default:''" json:"content"`
+	ActivityID *int64 `gorm:"index" json:"activity_id"`
+	// IdempotencyKey 用于需要重试的业务通知，避免重复生成站内消息。
+	IdempotencyKey *string    `gorm:"size:100;uniqueIndex:uniq_user_messages_idempotency_key" json:"-"`
+	ReadAt         *time.Time `json:"read_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
 }
 
 type PublicMessage struct {

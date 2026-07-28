@@ -15,6 +15,10 @@ func (pushTestRepository) Create(_ context.Context, item *UserMessage) error {
 	return nil
 }
 
+func (pushTestRepository) CreateIdempotent(ctx context.Context, item *UserMessage) error {
+	return pushTestRepository{}.Create(ctx, item)
+}
+
 func (pushTestRepository) ListByUser(context.Context, UserMessageQuery) ([]UserMessage, error) {
 	return nil, nil
 }
@@ -48,7 +52,7 @@ func TestCreatedMessageIDIsSharedWithPushChannels(t *testing.T) {
 	pusher := &capturePushSender{}
 	service := NewService(pushTestRepository{}, pusher, nil)
 
-	_, err := service.CreateActivityReviewMessage(context.Background(), 3000, 99, "周末徒步", true)
+	_, err := service.CreateActivityReviewMessage(context.Background(), 3000, 99, "周末徒步", true, "", "")
 	if err != nil {
 		t.Fatalf("CreateActivityReviewMessage() error = %v", err)
 	}
@@ -83,6 +87,27 @@ func TestRegistrationReviewUsesSharedPushChannel(t *testing.T) {
 		t.Fatalf("push payload = %+v", pusher.payload)
 	}
 	if pusher.payload.Alert != "您报名的周末徒步已通过审核，参加编号为 ABC12345。" {
+		t.Fatalf("Alert = %s", pusher.payload.Alert)
+	}
+}
+
+func TestActivityRejectMessageContainsImageAuditReason(t *testing.T) {
+	pusher := &capturePushSender{}
+	service := NewService(pushTestRepository{}, pusher, nil)
+
+	_, err := service.CreateActivityReviewMessage(
+		context.Background(),
+		3000,
+		99,
+		"周末徒步",
+		false,
+		"第1张图片命中色情低俗内容",
+		"activity-image-audit:7",
+	)
+	if err != nil {
+		t.Fatalf("CreateActivityReviewMessage() error = %v", err)
+	}
+	if pusher.payload.Alert != "您发布的周末徒步审核拒绝：第1张图片命中色情低俗内容" {
 		t.Fatalf("Alert = %s", pusher.payload.Alert)
 	}
 }

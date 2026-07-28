@@ -34,6 +34,20 @@ func NewAliyunRPCClient(accessKeyID string, accessKeySecret string) *AliyunRPCCl
 }
 
 func (c *AliyunRPCClient) Call(ctx context.Context, endpoint string, params map[string]string) (map[string]interface{}, error) {
+	return c.call(ctx, http.MethodGet, endpoint, params)
+}
+
+// CallPost 使用表单提交 RPC 参数，适合图片列表等较长请求，避免 URL 长度限制。
+func (c *AliyunRPCClient) CallPost(ctx context.Context, endpoint string, params map[string]string) (map[string]interface{}, error) {
+	return c.call(ctx, http.MethodPost, endpoint, params)
+}
+
+func (c *AliyunRPCClient) call(
+	ctx context.Context,
+	method string,
+	endpoint string,
+	params map[string]string,
+) (map[string]interface{}, error) {
 	if c.accessKeyID == "" || c.accessKeySecret == "" {
 		return nil, errors.New("阿里云访问密钥未配置")
 	}
@@ -49,12 +63,21 @@ func (c *AliyunRPCClient) Call(ctx context.Context, endpoint string, params map[
 	for key, value := range params {
 		values[key] = value
 	}
-	values["Signature"] = c.signature(values)
+	values["Signature"] = c.signature(method, values)
 
-	requestURL := "https://" + endpoint + "/?" + encodeQuery(values)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	requestURL := "https://" + endpoint + "/"
+	var requestBody io.Reader
+	if method == http.MethodGet {
+		requestURL += "?" + encodeQuery(values)
+	} else {
+		requestBody = strings.NewReader(encodeQuery(values))
+	}
+	req, err := http.NewRequestWithContext(ctx, method, requestURL, requestBody)
 	if err != nil {
 		return nil, err
+	}
+	if method == http.MethodPost {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -63,7 +86,7 @@ func (c *AliyunRPCClient) Call(ctx context.Context, endpoint string, params map[
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +95,7 @@ func (c *AliyunRPCClient) Call(ctx context.Context, endpoint string, params map[
 	}
 
 	var result map[string]interface{}
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := json.Unmarshal(responseBody, &result); err != nil {
 		return nil, err
 	}
 	if code, ok := result["Code"].(string); ok && code != "" && code != "OK" {
@@ -83,9 +106,9 @@ func (c *AliyunRPCClient) Call(ctx context.Context, endpoint string, params map[
 	return result, nil
 }
 
-func (c *AliyunRPCClient) signature(values map[string]string) string {
+func (c *AliyunRPCClient) signature(method string, values map[string]string) string {
 	canonicalized := encodeQuery(values)
-	stringToSign := "GET&%2F&" + percentEncode(canonicalized)
+	stringToSign := strings.ToUpper(method) + "&%2F&" + percentEncode(canonicalized)
 	mac := hmac.New(sha1.New, []byte(c.accessKeySecret+"&"))
 	mac.Write([]byte(stringToSign))
 	return base64.StdEncoding.EncodeToString(mac.Sum(nil))

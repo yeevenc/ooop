@@ -2,9 +2,11 @@ package message
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type UserMessageQuery struct {
@@ -15,6 +17,7 @@ type UserMessageQuery struct {
 
 type Repository interface {
 	Create(ctx context.Context, item *UserMessage) error
+	CreateIdempotent(ctx context.Context, item *UserMessage) error
 	ListByUser(ctx context.Context, query UserMessageQuery) ([]UserMessage, error)
 	MarkRead(ctx context.Context, userID int64, id int64, readAt time.Time) error
 	MarkAllRead(ctx context.Context, userID int64, readAt time.Time) (int64, error)
@@ -32,6 +35,37 @@ func NewGormRepository(db *gorm.DB) *GormRepository {
 
 func (r *GormRepository) Create(ctx context.Context, item *UserMessage) error {
 	return r.db.WithContext(ctx).Create(item).Error
+}
+
+func (r *GormRepository) CreateIdempotent(ctx context.Context, item *UserMessage) error {
+	if item.IdempotencyKey == nil {
+		return r.Create(ctx, item)
+	}
+	result := r.db.WithContext(ctx).
+		Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "idempotency_key"}},
+			DoNothing: true,
+		}).
+		Create(item)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 1 {
+		return nil
+	}
+
+	var existing UserMessage
+	err := r.db.WithContext(ctx).
+		Where("idempotency_key = ?", *item.IdempotencyKey).
+		First(&existing).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return errors.New("幂等站内消息创建失败")
+	}
+	if err != nil {
+		return err
+	}
+	*item = existing
+	return nil
 }
 
 func (r *GormRepository) ListByUser(ctx context.Context, query UserMessageQuery) ([]UserMessage, error) {

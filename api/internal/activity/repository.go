@@ -40,12 +40,22 @@ type AdminActivityQuery struct {
 
 type Repository interface {
 	Create(ctx context.Context, item *Activity) error
+	CreateWithImageAuditTask(ctx context.Context, item *Activity, task *ImageAuditTask) error
 	List(ctx context.Context, query ListQuery) ([]Activity, error)
 	ListByUser(ctx context.Context, query UserActivityQuery) ([]Activity, error)
 	FindByID(ctx context.Context, id int64) (Activity, error)
 	Save(ctx context.Context, item *Activity) error
 	Delete(ctx context.Context, id int64) error
 	UpdateStatus(ctx context.Context, id int64, status string) error
+	UpdateReviewStatusIfCurrent(
+		ctx context.Context,
+		id int64,
+		currentStatus string,
+		nextStatus string,
+		reviewSource string,
+		reviewReason string,
+		reviewedAt time.Time,
+	) (bool, error)
 	AdjustCurrentCount(ctx context.Context, id int64, delta int) error
 	FindActivitiesByIDs(ctx context.Context, ids []int64) ([]Activity, error)
 	FindFavorite(ctx context.Context, userID, activityID int64) (ActivityFavorite, error)
@@ -80,6 +90,20 @@ func NewGormRepository(db *gorm.DB) *GormRepository {
 
 func (r *GormRepository) Create(ctx context.Context, item *Activity) error {
 	return r.db.WithContext(ctx).Create(item).Error
+}
+
+func (r *GormRepository) CreateWithImageAuditTask(
+	ctx context.Context,
+	item *Activity,
+	task *ImageAuditTask,
+) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(item).Error; err != nil {
+			return err
+		}
+		task.ActivityID = item.ID
+		return tx.Create(task).Error
+	})
 }
 
 func (r *GormRepository) List(ctx context.Context, query ListQuery) ([]Activity, error) {
@@ -199,6 +223,9 @@ func (r *GormRepository) Delete(ctx context.Context, id int64) error {
 		if err := tx.Where("activity_id = ?", id).Delete(&ActivityFavorite{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("activity_id = ?", id).Delete(&ImageAuditTask{}).Error; err != nil {
+			return err
+		}
 		return tx.Delete(&Activity{}, id).Error
 	})
 }
@@ -242,6 +269,27 @@ func (r *GormRepository) ListFavoritesByUser(ctx context.Context, userID int64, 
 
 func (r *GormRepository) UpdateStatus(ctx context.Context, id int64, status string) error {
 	return r.db.WithContext(ctx).Model(&Activity{}).Where("id = ?", id).Update("status", status).Error
+}
+
+func (r *GormRepository) UpdateReviewStatusIfCurrent(
+	ctx context.Context,
+	id int64,
+	currentStatus string,
+	nextStatus string,
+	reviewSource string,
+	reviewReason string,
+	reviewedAt time.Time,
+) (bool, error) {
+	result := r.db.WithContext(ctx).
+		Model(&Activity{}).
+		Where("id = ? AND status = ?", id, currentStatus).
+		Updates(map[string]interface{}{
+			"status":        nextStatus,
+			"review_source": reviewSource,
+			"review_reason": reviewReason,
+			"reviewed_at":   reviewedAt,
+		})
+	return result.RowsAffected == 1, result.Error
 }
 
 func (r *GormRepository) AdminList(ctx context.Context, query AdminActivityQuery) ([]Activity, int64, error) {

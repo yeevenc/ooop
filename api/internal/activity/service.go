@@ -91,7 +91,15 @@ type Service struct {
 }
 
 type ReviewNotifier interface {
-	CreateActivityReviewMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, approved bool) (provider.PushResult, error)
+	CreateActivityReviewMessage(
+		ctx context.Context,
+		userID int64,
+		activityID int64,
+		activityTitle string,
+		approved bool,
+		rejectReason string,
+		idempotencyKey string,
+	) (provider.PushResult, error)
 	CreateActivityRegistrationMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, applicantName string) (provider.PushResult, error)
 	CreateRegistrationReviewMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, approved bool, entryCode string, rejectReason string) (provider.PushResult, error)
 }
@@ -163,7 +171,12 @@ func (s *Service) Create(ctx context.Context, userID int64, input CreateInput) (
 	}
 	item.CategoryLabel = category.Label
 
-	if err := s.activities.Create(ctx, &item); err != nil {
+	task := ImageAuditTask{
+		ImageURLsJSON: item.GalleryJSON,
+		Status:        ImageAuditTaskPending,
+		NextRetryAt:   time.Now(),
+	}
+	if err := s.activities.CreateWithImageAuditTask(ctx, &item, &task); err != nil {
 		return PublicActivity{}, err
 	}
 	return s.toPublic(ctx, item), nil
@@ -217,8 +230,9 @@ type AdminActivityListResult struct {
 }
 
 type ReviewActivityResult struct {
-	Activity     PublicActivity      `json:"activity"`
-	Notification provider.PushResult `json:"notification"`
+	Activity        PublicActivity      `json:"activity"`
+	Notification    provider.PushResult `json:"notification"`
+	notificationErr error
 }
 
 // AdminActivityUpdate 后台编辑活动可改字段（仅文本类；日期/截止/坐标/图片/发起人/状态保持不变）。
@@ -1020,7 +1034,14 @@ func (s *Service) DeleteOwnedActivity(ctx context.Context, ownerID, id int64) er
 }
 
 // ReviewActivity 审核：仅对「待审核」活动生效，通过→ongoing，拒绝→rejected。
-func (s *Service) ReviewActivity(ctx context.Context, id int64, approve bool) (ReviewActivityResult, error) {
+func (s *Service) ReviewActivity(
+	ctx context.Context,
+	id int64,
+	approve bool,
+	rejectReason string,
+	reviewSource string,
+	idempotencyKey string,
+) (ReviewActivityResult, error) {
 	item, err := s.findActivity(ctx, id)
 	if err != nil {
 		return ReviewActivityResult{}, err
@@ -1032,11 +1053,76 @@ func (s *Service) ReviewActivity(ctx context.Context, id int64, approve bool) (R
 	next := StatusRejected
 	if approve {
 		next = StatusOngoing
+		rejectReason = ""
 	}
-	if err := s.activities.UpdateStatus(ctx, id, next); err != nil {
+	reviewSource = strings.TrimSpace(reviewSource)
+	if reviewSource == "" {
+		reviewSource = ReviewSourceAdmin
+	}
+	reviewedAt := time.Now()
+	updated, err := s.activities.UpdateReviewStatusIfCurrent(
+		ctx,
+		id,
+		StatusPending,
+		next,
+		reviewSource,
+		strings.TrimSpace(rejectReason),
+		reviewedAt,
+	)
+	if err != nil {
 		return ReviewActivityResult{}, err
 	}
+	if !updated {
+		return ReviewActivityResult{}, ErrInvalidStatus
+	}
 	item.Status = next
+	item.ReviewSource = reviewSource
+	item.ReviewReason = strings.TrimSpace(rejectReason)
+	item.ReviewedAt = &reviewedAt
+	notification, notificationErr := s.notifyActivityReview(
+		ctx,
+		item,
+		approve,
+		rejectReason,
+		idempotencyKey,
+	)
+	return ReviewActivityResult{
+		Activity:        s.toPublic(ctx, item),
+		Notification:    notification,
+		notificationErr: notificationErr,
+	}, nil
+}
+
+// RetryActivityReviewNotification 仅重试已完成状态变更的审核通知，不重复修改活动状态。
+func (s *Service) RetryActivityReviewNotification(
+	ctx context.Context,
+	id int64,
+	approve bool,
+	rejectReason string,
+	idempotencyKey string,
+) error {
+	item, err := s.findActivity(ctx, id)
+	if err != nil {
+		return err
+	}
+	expectedStatus := StatusRejected
+	if approve {
+		expectedStatus = StatusOngoing
+	}
+	if item.Status != expectedStatus {
+		return ErrInvalidStatus
+	}
+	_, err = s.notifyActivityReview(ctx, item, approve, rejectReason, idempotencyKey)
+	return err
+}
+
+func (s *Service) notifyActivityReview(
+	ctx context.Context,
+	item Activity,
+	approve bool,
+	rejectReason string,
+	idempotencyKey string,
+) (provider.PushResult, error) {
 	notification := provider.PushResult{
 		Triggered: false,
 		Success:   false,
@@ -1045,16 +1131,24 @@ func (s *Service) ReviewActivity(ctx context.Context, id int64, approve bool) (R
 	}
 	if s.reviewNotifier != nil {
 		// 审核状态以活动更新为准，站内消息失败不阻断后台审核流程。
-		pushResult, err := s.reviewNotifier.CreateActivityReviewMessage(ctx, item.UserID, item.ID, item.Title, approve)
+		pushResult, err := s.reviewNotifier.CreateActivityReviewMessage(
+			ctx,
+			item.UserID,
+			item.ID,
+			item.Title,
+			approve,
+			rejectReason,
+			idempotencyKey,
+		)
 		notification = pushResult
 		if err != nil {
 			logger.Errorf("活动审核通知发送失败: activity_id=%d, user_id=%d, approved=%t, error=%v", item.ID, item.UserID, approve, err)
+			return notification, err
 		}
+	} else if strings.TrimSpace(idempotencyKey) != "" {
+		return notification, errors.New("活动审核通知服务未初始化")
 	}
-	return ReviewActivityResult{
-		Activity:     s.toPublic(ctx, item),
-		Notification: notification,
-	}, nil
+	return notification, nil
 }
 
 // SetActivityStatus 上下架：仅允许 ongoing 与 taken_down 互转。

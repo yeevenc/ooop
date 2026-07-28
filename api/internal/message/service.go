@@ -33,12 +33,24 @@ func NewService(messages Repository, pusher PushSender, users user.UserRepositor
 	}
 }
 
-func (s *Service) CreateActivityReviewMessage(ctx context.Context, userID int64, activityID int64, activityTitle string, approved bool) (provider.PushResult, error) {
+func (s *Service) CreateActivityReviewMessage(
+	ctx context.Context,
+	userID int64,
+	activityID int64,
+	activityTitle string,
+	approved bool,
+	rejectReason string,
+	idempotencyKey string,
+) (provider.PushResult, error) {
 	title := "活动审核通知"
 	content := fmt.Sprintf("您发布的%s审核拒绝。", strings.TrimSpace(activityTitle))
+	if reason := strings.TrimSpace(rejectReason); reason != "" {
+		content = fmt.Sprintf("您发布的%s审核拒绝：%s", strings.TrimSpace(activityTitle), reason)
+	}
 	if approved {
 		content = fmt.Sprintf("您发布的%s审核成功。", strings.TrimSpace(activityTitle))
 	}
+	content = truncateMessageContent(content, 500)
 
 	item := &UserMessage{
 		UserID:     userID,
@@ -47,7 +59,10 @@ func (s *Service) CreateActivityReviewMessage(ctx context.Context, userID int64,
 		Content:    content,
 		ActivityID: &activityID,
 	}
-	if err := s.messages.Create(ctx, item); err != nil {
+	if key := strings.TrimSpace(idempotencyKey); key != "" {
+		item.IdempotencyKey = &key
+	}
+	if err := s.messages.CreateIdempotent(ctx, item); err != nil {
 		return provider.PushResult{}, err
 	}
 
@@ -143,6 +158,14 @@ func (s *Service) PushChatReportResult(ctx context.Context, userID int64, messag
 
 func formatID(id int64) string {
 	return strconv.FormatInt(id, 10)
+}
+
+func truncateMessageContent(value string, maxLength int) string {
+	runes := []rune(value)
+	if maxLength <= 0 || len(runes) <= maxLength {
+		return value
+	}
+	return string(runes[:maxLength])
 }
 
 func (s *Service) pushToUser(ctx context.Context, userID int64, messageType string, title string, content string, messageID int64, activityID int64) (provider.PushResult, error) {
