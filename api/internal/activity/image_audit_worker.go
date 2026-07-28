@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -32,27 +31,17 @@ type ImageAuditReviewer interface {
 	) error
 }
 
-type ImageAuditWorkerLease interface {
-	TryAcquire(ctx context.Context, ttl time.Duration) (bool, error)
-	Release(ctx context.Context) error
-}
-
 type ImageAuditWorkerOptions struct {
-	PollInterval       time.Duration
-	LockTimeout        time.Duration
-	RecoveryInterval   time.Duration
-	LeaseTTL           time.Duration
-	LeaseRenewInterval time.Duration
-	LeaseRetryInterval time.Duration
-	BatchSize          int
-	Workers            int
+	PollInterval     time.Duration
+	LockTimeout      time.Duration
+	RecoveryInterval time.Duration
+	BatchSize        int
 }
 
 type ImageAuditWorker struct {
 	repository ImageAuditRepository
 	reviewer   ImageAuditReviewer
 	moderator  provider.ImageModerator
-	lease      ImageAuditWorkerLease
 	options    ImageAuditWorkerOptions
 }
 
@@ -71,27 +60,11 @@ func NewImageAuditWorker(
 	if options.RecoveryInterval <= 0 {
 		options.RecoveryInterval = time.Minute
 	}
-	if options.LeaseTTL <= 0 {
-		options.LeaseTTL = 45 * time.Second
-	}
-	if options.LeaseRenewInterval <= 0 ||
-		options.LeaseRenewInterval >= options.LeaseTTL {
-		options.LeaseRenewInterval = options.LeaseTTL / 3
-	}
-	if options.LeaseRetryInterval <= 0 {
-		options.LeaseRetryInterval = 10 * time.Second
-	}
 	if options.BatchSize <= 0 {
 		options.BatchSize = 10
 	}
 	if options.BatchSize > 100 {
 		options.BatchSize = 100
-	}
-	if options.Workers <= 0 {
-		options.Workers = 2
-	}
-	if options.Workers > 8 {
-		options.Workers = 8
 	}
 	return &ImageAuditWorker{
 		repository: repository,
@@ -101,92 +74,11 @@ func NewImageAuditWorker(
 	}
 }
 
-func (w *ImageAuditWorker) SetLease(lease ImageAuditWorkerLease) {
-	w.lease = lease
-}
-
 func (w *ImageAuditWorker) Start(ctx context.Context) {
 	go w.run(ctx)
 }
 
 func (w *ImageAuditWorker) run(ctx context.Context) {
-	if w.lease == nil {
-		w.runLeader(ctx)
-		return
-	}
-
-	waitingLogged := false
-	for {
-		if ctx.Err() != nil {
-			return
-		}
-		acquired, err := w.lease.TryAcquire(ctx, w.options.LeaseTTL)
-		if err != nil {
-			logger.Errorf("活动图片审核 Worker 租约获取失败: %v", err)
-		} else if acquired {
-			waitingLogged = false
-			logger.Infof("活动图片审核 Worker 已取得主节点租约")
-			w.runLeaseSession(ctx)
-			if ctx.Err() != nil {
-				return
-			}
-			logger.Warnf("活动图片审核 Worker 租约已失效，停止领取任务并等待重新接管")
-		} else if !waitingLogged {
-			logger.Infof("活动图片审核 Worker 当前为备用节点，不执行任务扫描")
-			waitingLogged = true
-		}
-
-		timer := time.NewTimer(w.options.LeaseRetryInterval)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return
-		case <-timer.C:
-		}
-	}
-}
-
-func (w *ImageAuditWorker) runLeaseSession(ctx context.Context) {
-	leaderCtx, cancel := context.WithCancel(ctx)
-	renewDone := make(chan struct{})
-	go func() {
-		defer close(renewDone)
-		ticker := time.NewTicker(w.options.LeaseRenewInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-leaderCtx.Done():
-				return
-			case <-ticker.C:
-				acquired, err := w.lease.TryAcquire(
-					leaderCtx,
-					w.options.LeaseTTL,
-				)
-				if err != nil {
-					logger.Errorf("活动图片审核 Worker 租约续期失败: %v", err)
-					cancel()
-					return
-				}
-				if !acquired {
-					cancel()
-					return
-				}
-			}
-		}
-	}()
-
-	w.runLeader(leaderCtx)
-	cancel()
-	<-renewDone
-
-	releaseCtx, releaseCancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer releaseCancel()
-	if err := w.lease.Release(releaseCtx); err != nil {
-		logger.Errorf("活动图片审核 Worker 租约释放失败: %v", err)
-	}
-}
-
-func (w *ImageAuditWorker) runLeader(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
@@ -218,15 +110,9 @@ func (w *ImageAuditWorker) process(ctx context.Context) {
 		return
 	}
 
-	semaphore := make(chan struct{}, w.options.Workers)
-	var wait sync.WaitGroup
 	for _, item := range tasks {
 		task := item
-		wait.Add(1)
-		semaphore <- struct{}{}
-		go func() {
-			defer wait.Done()
-			defer func() { <-semaphore }()
+		func() {
 			defer func() {
 				if recovered := recover(); recovered != nil {
 					w.retry(
@@ -240,7 +126,6 @@ func (w *ImageAuditWorker) process(ctx context.Context) {
 			w.processTask(ctx, task)
 		}()
 	}
-	wait.Wait()
 }
 
 func (w *ImageAuditWorker) ensurePendingTasks(ctx context.Context) {

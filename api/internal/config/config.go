@@ -104,7 +104,6 @@ type AliyunImageAuditConfig struct {
 	LockTimeout      time.Duration
 	RecoveryInterval time.Duration
 	BatchSize        int
-	Workers          int
 }
 
 type JiguangConfig struct {
@@ -200,7 +199,6 @@ func Load() Config {
 				LockTimeout:      getDurationEnv("ALIYUN_IMAGE_AUDIT_LOCK_TIMEOUT", 2*time.Minute),
 				RecoveryInterval: getDurationEnv("ALIYUN_IMAGE_AUDIT_RECOVERY_INTERVAL", time.Minute),
 				BatchSize:        getIntEnv("ALIYUN_IMAGE_AUDIT_BATCH_SIZE", 10),
-				Workers:          getIntEnv("ALIYUN_IMAGE_AUDIT_WORKERS", 2),
 			},
 		},
 		ContentModeration: ContentModerationConfig{

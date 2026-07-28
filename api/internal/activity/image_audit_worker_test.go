@@ -3,7 +3,7 @@ package activity
 import (
 	"context"
 	"errors"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -121,34 +121,28 @@ func (m imageAuditTestModerator) Audit(
 	return m.result, m.err
 }
 
-type imageAuditTestWorkerLease struct {
-	mutex        sync.Mutex
-	acquired     bool
-	tryCalls     int
-	releaseCalls int
+type imageAuditSerialTestModerator struct {
+	current atomic.Int32
+	maximum atomic.Int32
 }
 
-func (l *imageAuditTestWorkerLease) TryAcquire(
+func (m *imageAuditSerialTestModerator) Audit(
 	context.Context,
-	time.Duration,
-) (bool, error) {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
-	l.tryCalls++
-	return l.acquired, nil
-}
-
-func (l *imageAuditTestWorkerLease) Release(context.Context) error {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
-	l.releaseCalls++
-	return nil
-}
-
-func (l *imageAuditTestWorkerLease) counts() (int, int) {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
-	return l.tryCalls, l.releaseCalls
+	[]string,
+) (provider.ImageAuditResult, error) {
+	current := m.current.Add(1)
+	for {
+		maximum := m.maximum.Load()
+		if current <= maximum || m.maximum.CompareAndSwap(maximum, current) {
+			break
+		}
+	}
+	time.Sleep(5 * time.Millisecond)
+	m.current.Add(-1)
+	return provider.ImageAuditResult{
+		Suggestion: provider.ImageAuditSuggestionPass,
+		RawJSON:    `{"Data":{"Results":[]}}`,
+	}, nil
 }
 
 type imageAuditTestReviewer struct {
@@ -360,6 +354,39 @@ func TestImageAuditPollingDoesNotRecoverLocksEveryTime(t *testing.T) {
 	}
 }
 
+func TestImageAuditWorkerProcessesClaimedTasksSerially(t *testing.T) {
+	repository := &imageAuditTestRepository{
+		activity: Activity{ID: 99, Status: StatusPending},
+		claimedTasks: []ImageAuditTask{
+			{
+				ID:            7,
+				ActivityID:    99,
+				ImageURLsJSON: `["https://source.example.com/first.jpg"]`,
+				Status:        ImageAuditTaskProcessing,
+			},
+			{
+				ID:            8,
+				ActivityID:    100,
+				ImageURLsJSON: `["https://source.example.com/second.jpg"]`,
+				Status:        ImageAuditTaskProcessing,
+			},
+		},
+	}
+	moderator := &imageAuditSerialTestModerator{}
+	worker := NewImageAuditWorker(
+		repository,
+		&imageAuditTestReviewer{},
+		moderator,
+		ImageAuditWorkerOptions{},
+	)
+
+	worker.process(context.Background())
+
+	if maximum := moderator.maximum.Load(); maximum != 1 {
+		t.Fatalf("maximum audit concurrency = %d, want 1", maximum)
+	}
+}
+
 func TestImageAuditWorkerEnsuresPendingTasksOnStartup(t *testing.T) {
 	repository := &imageAuditTestRepository{
 		ensureSignal: make(chan struct{}, 1),
@@ -388,77 +415,6 @@ func TestImageAuditWorkerEnsuresPendingTasksOnStartup(t *testing.T) {
 
 	if repository.ensureCalls != 1 {
 		t.Fatalf("ensure calls = %d, want 1", repository.ensureCalls)
-	}
-}
-
-func TestImageAuditWorkerDoesNotPollWithoutLease(t *testing.T) {
-	repository := &imageAuditTestRepository{}
-	lease := &imageAuditTestWorkerLease{}
-	worker := NewImageAuditWorker(
-		repository,
-		&imageAuditTestReviewer{},
-		imageAuditTestModerator{},
-		ImageAuditWorkerOptions{
-			LeaseRetryInterval: time.Millisecond,
-		},
-	)
-	worker.SetLease(lease)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
-	defer cancel()
-
-	worker.run(ctx)
-
-	if repository.ensureCalls != 0 || repository.claimCalls != 0 {
-		t.Fatalf(
-			"follower scanned tasks: ensure=%d claim=%d",
-			repository.ensureCalls,
-			repository.claimCalls,
-		)
-	}
-	tryCalls, _ := lease.counts()
-	if tryCalls == 0 {
-		t.Fatal("lease was not attempted")
-	}
-}
-
-func TestImageAuditWorkerRunsAndReleasesAcquiredLease(t *testing.T) {
-	repository := &imageAuditTestRepository{
-		ensureSignal: make(chan struct{}, 1),
-	}
-	lease := &imageAuditTestWorkerLease{acquired: true}
-	worker := NewImageAuditWorker(
-		repository,
-		&imageAuditTestReviewer{},
-		imageAuditTestModerator{},
-		ImageAuditWorkerOptions{},
-	)
-	worker.SetLease(lease)
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		worker.run(ctx)
-	}()
-
-	select {
-	case <-repository.ensureSignal:
-		cancel()
-	case <-time.After(time.Second):
-		cancel()
-		t.Fatal("leader did not start pending task repair")
-	}
-	<-done
-
-	if repository.ensureCalls != 1 || repository.claimCalls != 1 {
-		t.Fatalf(
-			"leader calls: ensure=%d claim=%d, want 1 and 1",
-			repository.ensureCalls,
-			repository.claimCalls,
-		)
-	}
-	_, releaseCalls := lease.counts()
-	if releaseCalls != 1 {
-		t.Fatalf("release calls = %d, want 1", releaseCalls)
 	}
 }
 

@@ -17,7 +17,7 @@
 
 - 活动与审核任务使用同一事务，避免活动存在但审核任务缺失。
 - 服务启动及运行期间定时补建待审核活动缺失的任务，历史数据和异常断层会自动续审。
-- 多进程通过数据库租约选出唯一主 Worker，租约统一使用数据库时间，非主进程不扫描、不领取任务，主进程异常后自动接管。
+- 单个审核 Worker 串行处理任务，避免低配置服务器出现并发审核压力。
 - 任务领取使用条件更新，支持多实例并发执行。
 - 处理锁超时后自动释放，服务重启不会丢失任务。
 - 阿里云结果先持久化，再修改活动状态；后续节点失败不会重复调用计费接口。
@@ -43,7 +43,6 @@ ALIYUN_IMAGE_AUDIT_POLL_INTERVAL=2s
 ALIYUN_IMAGE_AUDIT_LOCK_TIMEOUT=2m
 ALIYUN_IMAGE_AUDIT_RECOVERY_INTERVAL=1m
 ALIYUN_IMAGE_AUDIT_BATCH_SIZE=10
-ALIYUN_IMAGE_AUDIT_WORKERS=2
 ```
 
 AccessKey 继续复用服务端已有的 `ALIYUN_ACCESS_KEY_ID` 和 `ALIYUN_ACCESS_KEY_SECRET`。七牛图片地址必须能被阿里云在三秒内下载，私有空间需要提供有效期足够的签名地址。
@@ -55,6 +54,5 @@ AccessKey 继续复用服务端已有的 `ALIYUN_ACCESS_KEY_ID` 和 `ALIYUN_ACCE
 1. 开通阿里云视觉智能开放平台的图片内容安全能力并完成 RAM 授权。
 2. 执行 `docs/sql/20260728_add_activity_image_audit.sql`。
 3. 执行 `docs/sql/20260728_optimize_async_task_indexes.sql`。
-4. 执行 `docs/sql/20260728_add_worker_leases.sql`。
-5. 配置环境变量并部署服务端。
-6. 通过测试图片验证 `pass`、`review`、`block` 和超时重试四条链路。
+4. 配置环境变量并部署服务端。
+5. 通过测试图片验证 `pass`、`review`、`block` 和超时重试四条链路。
