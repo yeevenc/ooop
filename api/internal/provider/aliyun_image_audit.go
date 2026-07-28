@@ -16,7 +16,7 @@ const (
 	ImageAuditSuggestionBlock  = "block"
 
 	aliyunImageAuditVersion  = "2019-12-30"
-	aliyunImageAuditMaxTasks = 10
+	aliyunImageAuditMaxTasks = 5
 )
 
 type ImageAuditHit struct {
@@ -143,7 +143,7 @@ func (m *AliyunImageModerator) auditBatch(
 		return ImageAuditResult{}, nil, err
 	}
 
-	response, err := m.client.CallPost(ctx, m.cfg.Endpoint, map[string]string{
+	response, err := m.client.Call(ctx, m.cfg.Endpoint, map[string]string{
 		"Action":   "ScanImage",
 		"Version":  aliyunImageAuditVersion,
 		"RegionId": strings.TrimSpace(m.cfg.RegionID),

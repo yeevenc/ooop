@@ -253,3 +253,23 @@ func TestImageAuditWorkerResumesNotificationAfterStatusWasApplied(t *testing.T) 
 		t.Fatalf("completed status = %s, want rejected", repository.completedStatus)
 	}
 }
+
+func TestImageAuditPollingDoesNotRecoverLocksEveryTime(t *testing.T) {
+	repository := &imageAuditTestRepository{}
+	worker := NewImageAuditWorker(
+		repository,
+		&imageAuditTestReviewer{},
+		imageAuditTestModerator{},
+		ImageAuditWorkerOptions{},
+	)
+
+	worker.process(context.Background())
+	if repository.recoverCalled {
+		t.Fatal("normal polling should not recover stale locks")
+	}
+
+	worker.recoverStaleTasks(context.Background())
+	if !repository.recoverCalled {
+		t.Fatal("scheduled recovery was not executed")
+	}
+}

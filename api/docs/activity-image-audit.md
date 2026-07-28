@@ -39,15 +39,19 @@ ALIYUN_IMAGE_AUDIT_REGION_ID=cn-shanghai
 ALIYUN_IMAGE_AUDIT_SCENES=porn,terrorism,ad,live
 ALIYUN_IMAGE_AUDIT_POLL_INTERVAL=2s
 ALIYUN_IMAGE_AUDIT_LOCK_TIMEOUT=2m
+ALIYUN_IMAGE_AUDIT_RECOVERY_INTERVAL=1m
 ALIYUN_IMAGE_AUDIT_BATCH_SIZE=10
 ALIYUN_IMAGE_AUDIT_WORKERS=2
 ```
 
 AccessKey 继续复用服务端已有的 `ALIYUN_ACCESS_KEY_ID` 和 `ALIYUN_ACCESS_KEY_SECRET`。七牛图片地址必须能被阿里云在三秒内下载，私有空间需要提供有效期足够的签名地址。
 
+普通任务按轮询间隔领取；卡死任务的锁恢复按一分钟单独执行，避免无任务时持续写数据库。
+
 ## 上线顺序
 
 1. 开通阿里云视觉智能开放平台的图片内容安全能力并完成 RAM 授权。
 2. 执行 `docs/sql/20260728_add_activity_image_audit.sql`。
-3. 配置环境变量并部署服务端。
-4. 通过测试图片验证 `pass`、`review`、`block` 和超时重试四条链路。
+3. 执行 `docs/sql/20260728_optimize_async_task_indexes.sql`。
+4. 配置环境变量并部署服务端。
+5. 通过测试图片验证 `pass`、`review`、`block` 和超时重试四条链路。

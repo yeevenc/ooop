@@ -33,10 +33,11 @@ type ImageAuditReviewer interface {
 }
 
 type ImageAuditWorkerOptions struct {
-	PollInterval time.Duration
-	LockTimeout  time.Duration
-	BatchSize    int
-	Workers      int
+	PollInterval     time.Duration
+	LockTimeout      time.Duration
+	RecoveryInterval time.Duration
+	BatchSize        int
+	Workers          int
 }
 
 type ImageAuditWorker struct {
@@ -57,6 +58,9 @@ func NewImageAuditWorker(
 	}
 	if options.LockTimeout < time.Minute {
 		options.LockTimeout = 2 * time.Minute
+	}
+	if options.RecoveryInterval <= 0 {
+		options.RecoveryInterval = time.Minute
 	}
 	if options.BatchSize <= 0 {
 		options.BatchSize = 10
@@ -83,29 +87,26 @@ func (w *ImageAuditWorker) Start(ctx context.Context) {
 }
 
 func (w *ImageAuditWorker) run(ctx context.Context) {
+	w.recoverStaleTasks(ctx)
 	w.process(ctx)
-	ticker := time.NewTicker(w.options.PollInterval)
-	defer ticker.Stop()
+	pollTicker := time.NewTicker(w.options.PollInterval)
+	recoveryTicker := time.NewTicker(w.options.RecoveryInterval)
+	defer pollTicker.Stop()
+	defer recoveryTicker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-pollTicker.C:
 			w.process(ctx)
+		case <-recoveryTicker.C:
+			w.recoverStaleTasks(ctx)
 		}
 	}
 }
 
 func (w *ImageAuditWorker) process(ctx context.Context) {
-	if err := w.repository.RecoverStaleImageAuditTasks(
-		ctx,
-		time.Now().Add(-w.options.LockTimeout),
-	); err != nil {
-		logger.Errorf("活动图片审核任务恢复失败: %v", err)
-		return
-	}
-
 	tasks, err := w.repository.ClaimImageAuditTasks(ctx, time.Now(), w.options.BatchSize)
 	if err != nil {
 		logger.Errorf("活动图片审核任务领取失败: %v", err)
@@ -135,6 +136,15 @@ func (w *ImageAuditWorker) process(ctx context.Context) {
 		}()
 	}
 	wait.Wait()
+}
+
+func (w *ImageAuditWorker) recoverStaleTasks(ctx context.Context) {
+	if err := w.repository.RecoverStaleImageAuditTasks(
+		ctx,
+		time.Now().Add(-w.options.LockTimeout),
+	); err != nil {
+		logger.Errorf("活动图片审核任务恢复失败: %v", err)
+	}
 }
 
 func (w *ImageAuditWorker) processTask(ctx context.Context, task ImageAuditTask) {

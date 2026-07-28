@@ -26,12 +26,13 @@ type channelPushSender interface {
 }
 
 type WorkerOptions struct {
-	PushInterval    time.Duration
-	CleanupInterval time.Duration
-	BatchSize       int
-	Workers         int
-	Retention       time.Duration
-	PushCategory    string
+	PushInterval     time.Duration
+	RecoveryInterval time.Duration
+	CleanupInterval  time.Duration
+	BatchSize        int
+	Workers          int
+	Retention        time.Duration
+	PushCategory     string
 }
 
 type Worker struct {
@@ -61,6 +62,9 @@ func NewWorker(repository PushRepository, users PushUserReader, pusher PushSende
 	if options.PushInterval <= 0 {
 		options.PushInterval = time.Second
 	}
+	if options.RecoveryInterval <= 0 {
+		options.RecoveryInterval = time.Minute
+	}
 	if options.CleanupInterval <= 0 {
 		options.CleanupInterval = time.Hour
 	}
@@ -83,15 +87,15 @@ func (w *Worker) Start(ctx context.Context) {
 }
 
 func (w *Worker) run(ctx context.Context) {
-	if err := w.repository.RecoverStalePushTasks(ctx, time.Now().Add(-time.Minute)); err != nil {
-		logger.Errorf("聊天推送任务恢复失败: %v", err)
-	}
+	w.recoverStalePushTasks(ctx)
 	w.processPushTasks(ctx)
 	w.cleanup(ctx)
 
 	pushTicker := time.NewTicker(w.options.PushInterval)
+	recoveryTicker := time.NewTicker(w.options.RecoveryInterval)
 	cleanupTicker := time.NewTicker(w.options.CleanupInterval)
 	defer pushTicker.Stop()
+	defer recoveryTicker.Stop()
 	defer cleanupTicker.Stop()
 
 	for {
@@ -100,6 +104,8 @@ func (w *Worker) run(ctx context.Context) {
 			return
 		case <-pushTicker.C:
 			w.processPushTasks(ctx)
+		case <-recoveryTicker.C:
+			w.recoverStalePushTasks(ctx)
 		case <-cleanupTicker.C:
 			w.cleanup(ctx)
 		}
@@ -107,10 +113,6 @@ func (w *Worker) run(ctx context.Context) {
 }
 
 func (w *Worker) processPushTasks(ctx context.Context) {
-	if err := w.repository.RecoverStalePushTasks(ctx, time.Now().Add(-time.Minute)); err != nil {
-		logger.Errorf("聊天推送任务解锁失败: %v", err)
-		return
-	}
 	tasks, err := w.repository.ClaimPushTasks(ctx, time.Now(), w.options.BatchSize)
 	if err != nil {
 		logger.Errorf("聊天推送任务领取失败: %v", err)
@@ -130,6 +132,12 @@ func (w *Worker) processPushTasks(ctx context.Context) {
 		}()
 	}
 	wait.Wait()
+}
+
+func (w *Worker) recoverStalePushTasks(ctx context.Context) {
+	if err := w.repository.RecoverStalePushTasks(ctx, time.Now().Add(-time.Minute)); err != nil {
+		logger.Errorf("聊天推送任务解锁失败: %v", err)
+	}
 }
 
 func (w *Worker) processPushTask(ctx context.Context, task PushTask) {
@@ -310,5 +318,12 @@ func pushRetryDelay(attempts int) time.Duration {
 }
 
 func (w WorkerOptions) String() string {
-	return fmt.Sprintf("interval=%s, workers=%d, batch=%d, retention=%s", w.PushInterval, w.Workers, w.BatchSize, w.Retention)
+	return fmt.Sprintf(
+		"interval=%s, recovery=%s, workers=%d, batch=%d, retention=%s",
+		w.PushInterval,
+		w.RecoveryInterval,
+		w.Workers,
+		w.BatchSize,
+		w.Retention,
+	)
 }

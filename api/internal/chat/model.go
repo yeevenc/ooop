@@ -52,10 +52,10 @@ type PushTask struct {
 	MessageID   int64      `gorm:"not null;index;uniqueIndex:uniq_chat_message_push_channel,priority:1"`
 	RecipientID int64      `gorm:"not null;index"`
 	Channel     string     `gorm:"size:16;not null;uniqueIndex:uniq_chat_message_push_channel,priority:2"`
-	Status      string     `gorm:"size:16;not null;index:idx_chat_push_schedule,priority:1"`
+	Status      string     `gorm:"size:16;not null;index:idx_chat_push_schedule,priority:1;index:idx_chat_push_recovery,priority:1"`
 	Attempts    int        `gorm:"not null;default:0"`
 	NextRetryAt time.Time  `gorm:"not null;index:idx_chat_push_schedule,priority:2"`
-	LockedAt    *time.Time `gorm:"index"`
+	LockedAt    *time.Time `gorm:"index;index:idx_chat_push_recovery,priority:2"`
 	LastError   string     `gorm:"size:500;not null;default:''"`
 	CreatedAt   time.Time
 	UpdatedAt   time.Time

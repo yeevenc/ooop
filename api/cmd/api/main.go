@@ -92,12 +92,13 @@ func main() {
 	chatService := chat.NewService(chatRepo, userRepo, contentChecker, cfg.Chat.MessageRetention)
 	chatReportService := chat.NewReportService(chatRepo, chatRepo, userRepo, messageService)
 	chatWorker := chat.NewWorker(chatRepo, userRepo, pushSender, chat.WorkerOptions{
-		PushInterval:    cfg.Chat.PushInterval,
-		CleanupInterval: cfg.Chat.CleanupInterval,
-		BatchSize:       cfg.Chat.PushBatchSize,
-		Workers:         cfg.Chat.PushWorkers,
-		Retention:       cfg.Chat.MessageRetention,
-		PushCategory:    cfg.Chat.PushCategory,
+		PushInterval:     cfg.Chat.PushInterval,
+		RecoveryInterval: cfg.Chat.PushRecoveryInterval,
+		CleanupInterval:  cfg.Chat.CleanupInterval,
+		BatchSize:        cfg.Chat.PushBatchSize,
+		Workers:          cfg.Chat.PushWorkers,
+		Retention:        cfg.Chat.MessageRetention,
+		PushCategory:     cfg.Chat.PushCategory,
 	})
 	chatWorker.Start(context.Background())
 	feedbackService := feedback.NewService(feedbackRepo, authService)
@@ -109,10 +110,11 @@ func main() {
 			activityService,
 			imageModerator,
 			activity.ImageAuditWorkerOptions{
-				PollInterval: cfg.Aliyun.ImageAudit.PollInterval,
-				LockTimeout:  cfg.Aliyun.ImageAudit.LockTimeout,
-				BatchSize:    cfg.Aliyun.ImageAudit.BatchSize,
-				Workers:      cfg.Aliyun.ImageAudit.Workers,
+				PollInterval:     cfg.Aliyun.ImageAudit.PollInterval,
+				LockTimeout:      cfg.Aliyun.ImageAudit.LockTimeout,
+				RecoveryInterval: cfg.Aliyun.ImageAudit.RecoveryInterval,
+				BatchSize:        cfg.Aliyun.ImageAudit.BatchSize,
+				Workers:          cfg.Aliyun.ImageAudit.Workers,
 			},
 		)
 		imageAuditWorker.Start(context.Background())

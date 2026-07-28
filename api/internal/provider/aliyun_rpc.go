@@ -91,7 +91,7 @@ func (c *AliyunRPCClient) call(
 		return nil, err
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("阿里云接口请求失败: %s", resp.Status)
+		return nil, aliyunRPCResponseError(resp.Status, responseBody)
 	}
 
 	var result map[string]interface{}
@@ -104,6 +104,35 @@ func (c *AliyunRPCClient) call(
 	}
 
 	return result, nil
+}
+
+func aliyunRPCResponseError(status string, responseBody []byte) error {
+	var payload map[string]interface{}
+	if err := json.Unmarshal(responseBody, &payload); err != nil {
+		return fmt.Errorf("阿里云接口请求失败: %s", status)
+	}
+
+	code, _ := payload["Code"].(string)
+	message, _ := payload["Message"].(string)
+	requestID, _ := payload["RequestId"].(string)
+	if requestID == "" {
+		requestID, _ = payload["RequestID"].(string)
+	}
+
+	details := make([]string, 0, 3)
+	if code = strings.TrimSpace(code); code != "" {
+		details = append(details, "code="+code)
+	}
+	if message = strings.TrimSpace(message); message != "" {
+		details = append(details, "message="+message)
+	}
+	if requestID = strings.TrimSpace(requestID); requestID != "" {
+		details = append(details, "request_id="+requestID)
+	}
+	if len(details) == 0 {
+		return fmt.Errorf("阿里云接口请求失败: %s", status)
+	}
+	return fmt.Errorf("阿里云接口请求失败: %s, %s", status, strings.Join(details, ", "))
 }
 
 func (c *AliyunRPCClient) signature(method string, values map[string]string) string {

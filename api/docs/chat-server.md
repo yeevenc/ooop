@@ -132,6 +132,7 @@ GET /api/v1/chat/unread-count
 ```text
 CHAT_MESSAGE_RETENTION=168h
 CHAT_PUSH_INTERVAL=1s
+CHAT_PUSH_RECOVERY_INTERVAL=1m
 CHAT_CLEANUP_INTERVAL=1h
 CHAT_PUSH_BATCH_SIZE=100
 CHAT_PUSH_WORKERS=4
@@ -139,6 +140,8 @@ CHAT_PUSH_CATEGORY=WORK
 ```
 
 `CHAT_MESSAGE_RETENTION` 会限制在 72～168 小时。当前项目 AGC 已开通 `WORK` 分类，因此默认沿用该分类；正式申请即时通讯分类权益后可将 `CHAT_PUSH_CATEGORY` 调整为 `IM`。
+
+聊天推送任务按秒领取，卡死任务的锁恢复每分钟执行一次，避免没有待推送消息时持续写数据库。
 
 ## 数据清理
 
