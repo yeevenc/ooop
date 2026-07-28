@@ -1,9 +1,63 @@
 package provider
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestBuildAliyunImageAuditParamsUsesIndexedFields(t *testing.T) {
+	params, err := buildAliyunImageAuditParams(
+		[]string{
+			"https://source.example.com/first.jpg",
+			"https://source.example.com/second.jpg",
+		},
+		5,
+		"cn-shanghai",
+		[]string{"porn", "terrorism"},
+	)
+	if err != nil {
+		t.Fatalf("buildAliyunImageAuditParams() error = %v", err)
+	}
+
+	expected := map[string]string{
+		"Action":           "ScanImage",
+		"Version":          aliyunImageAuditVersion,
+		"RegionId":         "cn-shanghai",
+		"Scene.1":          "porn",
+		"Scene.2":          "terrorism",
+		"Task.1.ImageURL":  "https://source.example.com/first.jpg",
+		"Task.1.DataId":    "image-6",
+		"Task.1.MaxFrames": "1",
+		"Task.2.ImageURL":  "https://source.example.com/second.jpg",
+		"Task.2.DataId":    "image-7",
+		"Task.2.MaxFrames": "1",
+	}
+	if !reflect.DeepEqual(params, expected) {
+		t.Fatalf("params = %#v, want %#v", params, expected)
+	}
+}
+
+func TestBuildAliyunImageAuditParamsKeepsSingleSceneCompatible(t *testing.T) {
+	params, err := buildAliyunImageAuditParams(
+		[]string{"https://source.example.com/activity.jpg"},
+		0,
+		"cn-shanghai",
+		[]string{"porn"},
+	)
+	if err != nil {
+		t.Fatalf("buildAliyunImageAuditParams() error = %v", err)
+	}
+	if params["Scene.1"] != "porn" {
+		t.Fatalf("Scene.1 = %s, want porn", params["Scene.1"])
+	}
+	if _, exists := params["Scene"]; exists {
+		t.Fatal("params contains unsupported Scene array field")
+	}
+	if _, exists := params["Task"]; exists {
+		t.Fatal("params contains unsupported Task array field")
+	}
+}
 
 func TestParseAliyunImageAuditResponseUsesStrongestSuggestion(t *testing.T) {
 	payload := map[string]interface{}{
@@ -59,6 +113,40 @@ func TestParseAliyunImageAuditResponseUsesStrongestSuggestion(t *testing.T) {
 		!strings.Contains(reason, "暴恐或敏感内容") ||
 		!strings.Contains(reason, "武器") {
 		t.Fatalf("RejectReason = %s", reason)
+	}
+}
+
+func TestParseAliyunImageAuditResponseSupportsDebugToolResponse(t *testing.T) {
+	payload := map[string]interface{}{
+		"Data": map[string]interface{}{
+			"Results": []interface{}{
+				map[string]interface{}{
+					"ImageURL": "https://source.example.com/activity.jpg",
+					"SubResults": []interface{}{
+						map[string]interface{}{
+							"Suggestion": "review",
+							"Rate":       "91.06",
+							"Label":      "sexy",
+							"Scene":      "porn",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result, err := parseAliyunImageAuditResponse(payload, 0)
+	if err != nil {
+		t.Fatalf("parseAliyunImageAuditResponse() error = %v", err)
+	}
+	if result.Suggestion != ImageAuditSuggestionReview {
+		t.Fatalf("Suggestion = %s, want review", result.Suggestion)
+	}
+	if len(result.Hits) != 1 {
+		t.Fatalf("Hits length = %d, want 1", len(result.Hits))
+	}
+	if result.Hits[0].Rate != 91.06 {
+		t.Fatalf("Rate = %.2f, want 91.06", result.Hits[0].Rate)
 	}
 }
 

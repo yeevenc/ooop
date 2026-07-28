@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"ooop-admin-api/internal/config"
@@ -121,40 +122,52 @@ func (m *AliyunImageModerator) auditBatch(
 	imageURLs []string,
 	offset int,
 ) (ImageAuditResult, map[string]interface{}, error) {
-	tasks := make([]map[string]interface{}, 0, len(imageURLs))
-	for index, imageURL := range imageURLs {
-		imageURL = strings.TrimSpace(imageURL)
-		if imageURL == "" {
-			return ImageAuditResult{}, nil, fmt.Errorf("第%d张活动图片地址为空", offset+index+1)
-		}
-		tasks = append(tasks, map[string]interface{}{
-			"ImageURL":  imageURL,
-			"DataId":    fmt.Sprintf("image-%d", offset+index+1),
-			"MaxFrames": 1,
-		})
-	}
-	taskJSON, err := json.Marshal(tasks)
-	if err != nil {
-		return ImageAuditResult{}, nil, err
-	}
-	scenes := normalizeImageAuditScenes(m.cfg.Scenes)
-	sceneJSON, err := json.Marshal(scenes)
+	params, err := buildAliyunImageAuditParams(
+		imageURLs,
+		offset,
+		m.cfg.RegionID,
+		m.cfg.Scenes,
+	)
 	if err != nil {
 		return ImageAuditResult{}, nil, err
 	}
 
-	response, err := m.client.Call(ctx, m.cfg.Endpoint, map[string]string{
-		"Action":   "ScanImage",
-		"Version":  aliyunImageAuditVersion,
-		"RegionId": strings.TrimSpace(m.cfg.RegionID),
-		"Task":     string(taskJSON),
-		"Scene":    string(sceneJSON),
-	})
+	response, err := m.client.Call(ctx, m.cfg.Endpoint, params)
 	if err != nil {
 		return ImageAuditResult{}, nil, err
 	}
 	result, err := parseAliyunImageAuditResponse(response, offset)
 	return result, response, err
+}
+
+func buildAliyunImageAuditParams(
+	imageURLs []string,
+	offset int,
+	regionID string,
+	scenes []string,
+) (map[string]string, error) {
+	params := map[string]string{
+		"Action":   "ScanImage",
+		"Version":  aliyunImageAuditVersion,
+		"RegionId": strings.TrimSpace(regionID),
+	}
+	for index, imageURL := range imageURLs {
+		imageURL = strings.TrimSpace(imageURL)
+		if imageURL == "" {
+			return nil, fmt.Errorf("第%d张活动图片地址为空", offset+index+1)
+		}
+		position := index + 1
+		params[fmt.Sprintf("Task.%d.ImageURL", position)] = imageURL
+		params[fmt.Sprintf("Task.%d.DataId", position)] = fmt.Sprintf(
+			"image-%d",
+			offset+position,
+		)
+		params[fmt.Sprintf("Task.%d.MaxFrames", position)] = "1"
+	}
+	for index, scene := range normalizeImageAuditScenes(scenes) {
+		params[fmt.Sprintf("Scene.%d", index+1)] = scene
+	}
+	return params, nil
 }
 
 func parseAliyunImageAuditResponse(payload map[string]interface{}, offset int) (ImageAuditResult, error) {
@@ -176,14 +189,16 @@ func parseAliyunImageAuditResponse(payload map[string]interface{}, offset int) (
 		if !ok {
 			return ImageAuditResult{}, errors.New("阿里云图片审核结果格式不正确")
 		}
-		code, ok := numberValue(item["Code"])
-		if !ok || int(code) != 200 {
-			message, _ := item["Message"].(string)
-			return ImageAuditResult{}, fmt.Errorf(
-				"第%d张图片审核失败: %s",
-				offset+resultIndex+1,
-				strings.TrimSpace(message),
-			)
+		if rawCode, exists := item["Code"]; exists {
+			code, ok := numberValue(rawCode)
+			if !ok || int(code) != 200 {
+				message, _ := item["Message"].(string)
+				return ImageAuditResult{}, fmt.Errorf(
+					"第%d张图片审核失败: %s",
+					offset+resultIndex+1,
+					strings.TrimSpace(message),
+				)
+			}
 		}
 		subResults, ok := item["SubResults"].([]interface{})
 		if !ok || len(subResults) == 0 {
@@ -275,6 +290,9 @@ func numberValue(value interface{}) (float64, bool) {
 		return float64(number), true
 	case json.Number:
 		result, err := number.Float64()
+		return result, err == nil
+	case string:
+		result, err := strconv.ParseFloat(strings.TrimSpace(number), 64)
 		return result, err == nil
 	default:
 		return 0, false
