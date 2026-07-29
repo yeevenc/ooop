@@ -56,6 +56,7 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	group.GET("", h.list)
 	group.GET("/:id", h.detail)
 	group.POST("", h.appAuth(), h.create)
+	group.PUT("/:id", h.appAuth(), h.updateOwnedActivity)
 	group.PUT("/:id/favorite", h.appAuth(), h.favorite)
 	group.DELETE("/:id/favorite", h.appAuth(), h.unfavorite)
 
@@ -69,6 +70,7 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	group.PUT("/:id/participation/cancel", h.appAuth(), h.cancelParticipation)
 	group.PUT("/:id/cancel", h.appAuth(), h.cancelOwnedActivity)
 	group.PUT("/:id/take-down", h.appAuth(), h.takeDownOwnedActivity)
+	group.PUT("/:id/republish", h.appAuth(), h.republishOwnedActivity)
 	group.DELETE("/:id", h.appAuth(), h.deleteOwnedActivity)
 	group.GET("/:id/my-participation", h.appAuth(), h.myParticipation)
 	// 已报名成功成员列表（公开，仅 approved）
@@ -95,6 +97,33 @@ func (h *Handler) create(c *gin.Context) {
 	}
 
 	result, err := h.service.Create(c.Request.Context(), userID, req.toInput())
+	writeResult(c, result, err)
+}
+
+// updateOwnedActivity 发起人编辑活动，完整字段与发布接口保持一致。
+func (h *Handler) updateOwnedActivity(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+
+	var req createRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		httpx.Fail(c, http.StatusBadRequest, 400001, "请求参数格式不正确")
+		return
+	}
+
+	result, err := h.service.UpdateOwnedActivity(
+		c.Request.Context(),
+		userID,
+		id,
+		req.toInput(),
+	)
 	writeResult(c, result, err)
 }
 
@@ -274,6 +303,22 @@ func (h *Handler) takeDownOwnedActivity(c *gin.Context) {
 		return
 	}
 	result, err := h.service.TakeDownOwnedActivity(c.Request.Context(), userID, id)
+	writeResult(c, result, err)
+}
+
+// republishOwnedActivity 发起人重新发布已取消或已下架的活动。
+func (h *Handler) republishOwnedActivity(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+
+	result, err := h.service.RepublishOwnedActivity(c.Request.Context(), userID, id)
 	writeResult(c, result, err)
 }
 
@@ -495,7 +540,11 @@ func writeResult(c *gin.Context, data interface{}, err error) {
 		errors.Is(err, ErrInvalidCity),
 		errors.Is(err, ErrInvalidIntro),
 		errors.Is(err, ErrInvalidCount),
+		errors.Is(err, ErrCountBelowJoined),
 		errors.Is(err, ErrTooManyImages),
+		errors.Is(err, ErrInvalidStatus),
+		errors.Is(err, ErrInvalidActivityTime),
+		errors.Is(err, ErrActivityExpired),
 		errors.Is(err, ErrAlreadyJoined),
 		errors.Is(err, ErrJoinOwnActivity),
 		errors.Is(err, ErrActivityFull),

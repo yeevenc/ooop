@@ -41,6 +41,9 @@ var (
 	ErrParticipantNotFound = errors.New("报名记录不存在")
 	ErrRejectReasonMissing = errors.New("请填写拒绝原因")
 	ErrActivityStarted     = errors.New("活动已开始，不能进行该操作")
+	ErrActivityExpired     = errors.New("活动时间已过期，请先编辑活动时间")
+	ErrInvalidActivityTime = errors.New("请选择有效的活动时间")
+	ErrCountBelowJoined    = errors.New("活动人数不能少于已报名人数")
 	ErrInvalidContactInfo  = errors.New("请填写联系方式")
 )
 
@@ -971,6 +974,132 @@ func (s *Service) UpdateActivity(ctx context.Context, id int64, input AdminActiv
 	return s.toPublic(ctx, item), nil
 }
 
+// UpdateOwnedActivity 发起人编辑活动；已取消、已下架活动保持原状态，其余状态重新进入审核。
+func (s *Service) UpdateOwnedActivity(
+	ctx context.Context,
+	ownerID, id int64,
+	input CreateInput,
+) (PublicActivity, error) {
+	item, err := s.findActivity(ctx, id)
+	if err != nil {
+		return PublicActivity{}, err
+	}
+	if item.UserID != ownerID {
+		return PublicActivity{}, ErrNotOrganizer
+	}
+	if item.Status == StatusOngoing && hasActivityStarted(item) {
+		return PublicActivity{}, ErrActivityStarted
+	}
+	if input.TotalCount < item.CurrentCount {
+		return PublicActivity{}, ErrCountBelowJoined
+	}
+
+	updated, err := input.toModel(ownerID)
+	if err != nil {
+		return PublicActivity{}, err
+	}
+	if err := s.checkActivityContent(ctx, updated.Title, updated.Intro, updated.Notice); err != nil {
+		return PublicActivity{}, err
+	}
+
+	category, err := s.activities.FindCategory(ctx, updated.CategoryID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return PublicActivity{}, ErrInvalidCategory
+		}
+		return PublicActivity{}, err
+	}
+
+	updated.ID = item.ID
+	updated.CategoryLabel = category.Label
+	updated.CurrentCount = item.CurrentCount
+	updated.CreatedAt = item.CreatedAt
+	updated.UpdatedAt = item.UpdatedAt
+
+	if item.Status == StatusCancelled || item.Status == StatusTakenDown {
+		updated.Status = item.Status
+		updated.ReviewSource = item.ReviewSource
+		updated.ReviewReason = item.ReviewReason
+		updated.ReviewedAt = item.ReviewedAt
+		if err := s.activities.Save(ctx, &updated); err != nil {
+			return PublicActivity{}, err
+		}
+		return s.toPublic(ctx, updated), nil
+	}
+
+	updated.Status = StatusPending
+	updated.ReviewSource = ""
+	updated.ReviewReason = ""
+	updated.ReviewedAt = nil
+	if err := s.activities.SaveWithImageAuditTask(
+		ctx,
+		&updated,
+		newImageAuditTask(updated),
+	); err != nil {
+		return PublicActivity{}, err
+	}
+	return s.toPublic(ctx, updated), nil
+}
+
+// RepublishOwnedActivity 重新发布已取消或已下架活动，并使用服务器时间校验活动是否过期。
+func (s *Service) RepublishOwnedActivity(
+	ctx context.Context,
+	ownerID, id int64,
+) (PublicActivity, error) {
+	item, err := s.findActivity(ctx, id)
+	if err != nil {
+		return PublicActivity{}, err
+	}
+	if item.UserID != ownerID {
+		return PublicActivity{}, ErrNotOrganizer
+	}
+	if err := validateActivityRepublish(item, time.Now()); err != nil {
+		return PublicActivity{}, err
+	}
+
+	item.Status = StatusPending
+	item.ReviewSource = ""
+	item.ReviewReason = ""
+	item.ReviewedAt = nil
+	if err := s.activities.SaveWithImageAuditTask(
+		ctx,
+		&item,
+		newImageAuditTask(item),
+	); err != nil {
+		return PublicActivity{}, err
+	}
+	return s.toPublic(ctx, item), nil
+}
+
+func validateActivityRepublish(item Activity, now time.Time) error {
+	if item.Status != StatusCancelled && item.Status != StatusTakenDown {
+		return ErrInvalidStatus
+	}
+	if item.ActivityDate == nil {
+		return ErrInvalidActivityTime
+	}
+	if !item.ActivityDate.After(now) {
+		return ErrActivityExpired
+	}
+	return nil
+}
+
+func newImageAuditTask(item Activity) *ImageAuditTask {
+	return &ImageAuditTask{
+		ImageURLsJSON:    imageAuditURLsJSON(item),
+		Status:           ImageAuditTaskPending,
+		Decision:         "",
+		Attempts:         0,
+		NextRetryAt:      time.Now(),
+		LockedAt:         nil,
+		ResultJSON:       "",
+		RejectReason:     "",
+		NotificationDone: false,
+		LastError:        "",
+		CompletedAt:      nil,
+	}
+}
+
 func (s *Service) checkActivityContent(ctx context.Context, title, intro, notice string) error {
 	return s.contentChecker.Check(ctx, contentmoderation.SceneContent,
 		contentmoderation.Field{Name: "活动标题", Content: title},
@@ -1372,6 +1501,7 @@ func (s *Service) toPublic(ctx context.Context, item Activity) PublicActivity {
 		TotalCount:        item.TotalCount,
 		NeedCount:         needCount,
 		DeadlineText:      formatDeadlineText(item.DeadlineAt),
+		DeadlineAt:        item.DeadlineAt,
 		DateText:          formatDateText(item.ActivityDate),
 		TimeRange:         formatTimeRange(item.ActivityTime),
 		ActivityTime:      item.ActivityTime,

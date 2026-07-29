@@ -41,6 +41,7 @@ type AdminActivityQuery struct {
 type Repository interface {
 	Create(ctx context.Context, item *Activity) error
 	CreateWithImageAuditTask(ctx context.Context, item *Activity, task *ImageAuditTask) error
+	SaveWithImageAuditTask(ctx context.Context, item *Activity, task *ImageAuditTask) error
 	List(ctx context.Context, query ListQuery) ([]Activity, error)
 	ListByUser(ctx context.Context, query UserActivityQuery) ([]Activity, error)
 	FindByID(ctx context.Context, id int64) (Activity, error)
@@ -103,6 +104,37 @@ func (r *GormRepository) CreateWithImageAuditTask(
 		}
 		task.ActivityID = item.ID
 		return tx.Create(task).Error
+	})
+}
+
+func (r *GormRepository) SaveWithImageAuditTask(
+	ctx context.Context,
+	item *Activity,
+	task *ImageAuditTask,
+) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(item).Error; err != nil {
+			return err
+		}
+
+		task.ActivityID = item.ID
+		return tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "activity_id"}},
+			DoUpdates: clause.AssignmentColumns([]string{
+				"image_urls_json",
+				"status",
+				"decision",
+				"attempts",
+				"next_retry_at",
+				"locked_at",
+				"result_json",
+				"reject_reason",
+				"notification_done",
+				"last_error",
+				"completed_at",
+				"updated_at",
+			}),
+		}).Create(task).Error
 	})
 }
 

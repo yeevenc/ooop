@@ -279,6 +279,27 @@ GET /user/settings
 Authorization: Bearer <access_token>
 ```
 
+## 活动编辑
+
+活动发起人可以编辑自己发布的活动，请求字段与发布活动一致。
+
+```http
+PUT /activities/:id
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
+
+已取消、已下架的活动编辑后保持原状态；其他可编辑状态会重新进入 `pending` 审核。已开始的 `ongoing` 活动不可编辑，人数上限不能少于当前已报名人数。
+
+## 活动重新发布
+
+```http
+PUT /activities/:id/republish
+Authorization: Bearer <access_token>
+```
+
+仅活动发起人可以重新发布 `cancelled`、`taken_down` 状态的活动。服务端使用服务器时间校验 `activity_date` 必须晚于当前时间，成功后活动进入 `pending` 状态重新审核。
+
 返回：
 
 ```json

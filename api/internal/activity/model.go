@@ -73,6 +73,7 @@ type PublicActivity struct {
 	TotalCount        int             `json:"totalCount"`
 	NeedCount         int             `json:"needCount"`
 	DeadlineText      string          `json:"deadlineText"`
+	DeadlineAt        *time.Time      `json:"deadlineAt"`
 	DateText          string          `json:"dateText"`
 	TimeRange         string          `json:"timeRange"`
 	ActivityTime      string          `json:"activityTime"`
