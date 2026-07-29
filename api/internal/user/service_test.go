@@ -152,7 +152,12 @@ func TestUpdateProfilePartiallyUpdatesFields(t *testing.T) {
 
 	nickname := "  新昵称  "
 	bio := "热爱生活"
-	updated, err := service.UpdateProfile(ctx, login.User.ID, ProfileUpdate{Nickname: &nickname, Bio: &bio})
+	coverURL := "  https://source.ooopai.cn/images/profile-cover.jpg  "
+	updated, err := service.UpdateProfile(ctx, login.User.ID, ProfileUpdate{
+		Nickname: &nickname,
+		Bio:      &bio,
+		CoverURL: &coverURL,
+	})
 	if err != nil {
 		t.Fatalf("UpdateProfile() error = %v", err)
 	}
@@ -161,6 +166,9 @@ func TestUpdateProfilePartiallyUpdatesFields(t *testing.T) {
 	}
 	if updated.Bio != "热爱生活" {
 		t.Fatalf("bio = %q, want 热爱生活", updated.Bio)
+	}
+	if updated.CoverURL != "https://source.ooopai.cn/images/profile-cover.jpg" {
+		t.Fatalf("cover = %q, want trimmed cover URL", updated.CoverURL)
 	}
 
 	// 仅传 region，其余字段保持不变
@@ -173,10 +181,23 @@ func TestUpdateProfilePartiallyUpdatesFields(t *testing.T) {
 		t.Fatalf("部分更新丢字段: %+v", updated)
 	}
 
+	publicProfile, err := service.PublicProfile(ctx, login.User.ID)
+	if err != nil {
+		t.Fatalf("PublicProfile() error = %v", err)
+	}
+	if publicProfile.CoverURL != "https://source.ooopai.cn/images/profile-cover.jpg" {
+		t.Fatalf("public cover = %q, want updated cover URL", publicProfile.CoverURL)
+	}
+
 	// 空昵称应被拒绝
 	blank := "   "
 	if _, err := service.UpdateProfile(ctx, login.User.ID, ProfileUpdate{Nickname: &blank}); !errors.Is(err, ErrInvalidProfile) {
 		t.Fatalf("空昵称 error = %v, want ErrInvalidProfile", err)
+	}
+
+	tooLongCoverURL := strings.Repeat("x", 501)
+	if _, err := service.UpdateProfile(ctx, login.User.ID, ProfileUpdate{CoverURL: &tooLongCoverURL}); !errors.Is(err, ErrInvalidProfile) {
+		t.Fatalf("超长封面地址 error = %v, want ErrInvalidProfile", err)
 	}
 }
 
@@ -628,6 +649,9 @@ func (r *memoryUserRepository) UpdateProfile(ctx context.Context, id int64, upda
 	}
 	if update.Avatar != nil {
 		item.Avatar = *update.Avatar
+	}
+	if update.CoverURL != nil {
+		item.CoverURL = *update.CoverURL
 	}
 	item.UpdatedAt = time.Now()
 	r.items[id] = item

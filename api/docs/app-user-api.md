@@ -240,7 +240,7 @@ Authorization: Bearer <access_token>
 
 ## 8. 修改当前用户资料
 
-仅支持修改昵称、性别、地区、个性签名、头像；只提交需要修改的字段，未提交的字段保持不变。头像需先调用「上传图片」接口拿到 URL，再把 URL 提交到 `avatar`。
+仅支持修改昵称、性别、地区、个性签名、头像和主页封面；只提交需要修改的字段，未提交的字段保持不变。头像和主页封面需先调用「上传图片」接口拿到 URL。
 
 ```http
 PUT /user/profile
@@ -256,7 +256,8 @@ Content-Type: application/json
   "gender": "男",
   "region": "上海",
   "bio": "热爱生活",
-  "avatar": "https://source.ooopai.cn/images/2026/06/29/1718000000000000000.jpg"
+  "avatar": "https://source.ooopai.cn/images/2026/06/29/1718000000000000000.jpg",
+  "cover": "https://source.ooopai.cn/images/2026/07/29/profile-cover.jpg"
 }
 ```
 
@@ -268,6 +269,7 @@ gender：最长 16 字
 region：最长 64 字
 bio：最长 200 字
 avatar：图片 URL，最长 255 字符；由「上传图片」接口返回
+cover：主页封面图片 URL，最长 500 字符；为空时 App 使用现有默认封面
 ```
 
 返回更新后的完整用户信息，结构同「获取当前用户信息」。
@@ -405,7 +407,7 @@ Authorization: Bearer <access_token>
 
 ## 13. 上传图片
 
-用于头像等图片上传，后端会上传到七牛云 `ooop` 空间并返回可公开访问的 CDN URL。
+用于头像、主页封面等图片上传，后端会上传到七牛云 `ooop` 空间并返回可公开访问的 CDN URL。
 
 ```http
 POST /upload/image

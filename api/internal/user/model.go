@@ -32,6 +32,7 @@ type User struct {
 	Username             *string    `gorm:"size:64;uniqueIndex" json:"username"`
 	Nickname             string     `gorm:"size:64;not null;default:''" json:"nickname"`
 	Avatar               string     `gorm:"size:255;not null;default:''" json:"avatar"`
+	CoverURL             string     `gorm:"column:cover_url;size:500;not null;default:''" json:"cover"`
 	Gender               string     `gorm:"size:16;not null;default:''" json:"gender"`
 	Region               string     `gorm:"size:64;not null;default:''" json:"region"`
 	Bio                  string     `gorm:"size:255;not null;default:''" json:"bio"`
@@ -80,6 +81,7 @@ type PublicUser struct {
 	Username             string               `json:"username"`
 	Nickname             string               `json:"nickname"`
 	Avatar               string               `json:"avatar"`
+	CoverURL             string               `json:"cover"`
 	Gender               string               `json:"gender"`
 	Region               string               `json:"region"`
 	Bio                  string               `json:"bio"`
@@ -113,6 +115,7 @@ func ToPublicUser(item User) PublicUser {
 		Username:             stringValue(item.Username),
 		Nickname:             item.Nickname,
 		Avatar:               AvatarURL(item.Avatar),
+		CoverURL:             item.CoverURL,
 		Gender:               item.Gender,
 		Region:               item.Region,
 		Bio:                  item.Bio,
@@ -197,6 +200,7 @@ type UserPublicProfile struct {
 	ID               string    `json:"id"`
 	Nickname         string    `json:"nickname"`
 	Avatar           string    `json:"avatar"`
+	CoverURL         string    `json:"cover"`
 	Gender           string    `json:"gender"`
 	Region           string    `json:"region"`
 	Bio              string    `json:"bio"`
@@ -213,6 +217,7 @@ func ToUserPublicProfile(item User) UserPublicProfile {
 		ID:               strconv.FormatInt(item.ID, 10),
 		Nickname:         item.Nickname,
 		Avatar:           AvatarURL(item.Avatar),
+		CoverURL:         item.CoverURL,
 		Gender:           item.Gender,
 		Region:           publicRegion(item),
 		Bio:              item.Bio,

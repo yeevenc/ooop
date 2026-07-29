@@ -21,15 +21,15 @@ import (
 const LoginCodeSceneLogin = "login"
 
 var (
-	ErrInvalidPhone     = errors.New("手机号格式不正确")
-	ErrInvalidPassword  = errors.New("密码长度不能少于 8 位")
-	ErrInvalidAccount   = errors.New("账号或密码错误")
-	ErrInvalidOldPass   = errors.New("当前密码不正确")
-	ErrInvalidCode      = errors.New("验证码错误或已过期")
+	ErrInvalidPhone    = errors.New("手机号格式不正确")
+	ErrInvalidPassword = errors.New("密码长度不能少于 8 位")
+	ErrInvalidAccount  = errors.New("账号或密码错误")
+	ErrInvalidOldPass  = errors.New("当前密码不正确")
+	ErrInvalidCode     = errors.New("验证码错误或已过期")
 	// ErrDisabledUser 与 auth.ErrAccountBanned 语义一致，供 errors.Is 识别封禁。
-	ErrDisabledUser = auth.ErrAccountBanned
-	ErrInvalidBan   = errors.New("封禁参数不正确")
-	ErrPhoneExists  = errors.New("手机号已注册")
+	ErrDisabledUser     = auth.ErrAccountBanned
+	ErrInvalidBan       = errors.New("封禁参数不正确")
+	ErrPhoneExists      = errors.New("手机号已注册")
 	ErrReservedUsername = errors.New("该用户名不可使用")
 	ErrInvalidProfile   = errors.New("资料字段不合法")
 	ErrInvalidRealName  = errors.New("实名信息格式不正确")
@@ -108,6 +108,7 @@ type ProfileUpdate struct {
 	Region   *string
 	Bio      *string
 	Avatar   *string
+	CoverURL *string
 }
 
 // ProfileUpdateInput 是资料更新接口的请求体，APP 改自己与后台改指定用户共用同一组可改字段。
@@ -117,6 +118,7 @@ type ProfileUpdateInput struct {
 	Region   *string `json:"region"`
 	Bio      *string `json:"bio"`
 	Avatar   *string `json:"avatar"`
+	CoverURL *string `json:"cover"`
 }
 
 func (i ProfileUpdateInput) ToProfileUpdate() ProfileUpdate {
@@ -445,7 +447,7 @@ func (s *AuthService) userStats(ctx context.Context, userID int64, publicOnly bo
 	}, nil
 }
 
-// UpdateProfile 更新指定用户的资料字段（昵称/性别/地区/简介），APP 端改自己、后台改指定用户共用。
+// UpdateProfile 更新指定用户资料，APP 端改自己、后台改指定用户共用。
 func (s *AuthService) UpdateProfile(ctx context.Context, userID int64, update ProfileUpdate) (PublicUser, error) {
 	normalized, err := normalizeProfileUpdate(update)
 	if err != nil {
@@ -866,6 +868,13 @@ func normalizeProfileUpdate(update ProfileUpdate) (ProfileUpdate, error) {
 		}
 		update.Avatar = &avatar
 	}
+	if update.CoverURL != nil {
+		coverURL := strings.TrimSpace(*update.CoverURL)
+		if utf8.RuneCountInString(coverURL) > 500 {
+			return ProfileUpdate{}, ErrInvalidProfile
+		}
+		update.CoverURL = &coverURL
+	}
 	return update, nil
 }
 
@@ -886,6 +895,9 @@ func profileUpdateColumns(update ProfileUpdate) map[string]interface{} {
 	}
 	if update.Avatar != nil {
 		columns["avatar"] = *update.Avatar
+	}
+	if update.CoverURL != nil {
+		columns["cover_url"] = *update.CoverURL
 	}
 	return columns
 }
