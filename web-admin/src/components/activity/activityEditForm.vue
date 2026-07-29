@@ -22,9 +22,9 @@ const emit = defineEmits<{
 const loading = ref(false)
 const submitting = ref(false)
 const categories = ref<AdminCategory[]>([])
-const form = reactive<UpdateActivityPayload>({
+const form = reactive<Omit<UpdateActivityPayload, 'category_id'> & { category_id: number | null }>({
   title: '',
-  category_id: '',
+  category_id: null,
   activity_time: '',
   location_text: '',
   city: '',
@@ -95,6 +95,7 @@ async function handleSubmit() {
   try {
     await updateActivity(props.activityId, {
       ...form,
+      category_id: form.category_id,
       title: form.title.trim(),
       intro: form.intro.trim(),
     })

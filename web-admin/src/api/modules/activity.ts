@@ -9,7 +9,7 @@ export interface ActivityOrganizer {
 export interface AdminActivity {
   id: string
   title: string
-  categoryId: string
+  categoryId: number
   categoryLabel: string
   imageUrl: string
   status: string
@@ -35,7 +35,7 @@ export interface ActivityListParams {
   page_size: number
   keyword?: string
   status?: string
-  category_id?: string
+  category_id?: number
 }
 
 export interface ActivityListResult {
@@ -69,7 +69,7 @@ export interface AdminActivityReviewResult {
 // 后台可改的活动文本字段（日期/坐标/图片/发起人/状态不在此处改）。
 export interface UpdateActivityPayload {
   title: string
-  category_id: string
+  category_id: number
   activity_time?: string
   location_text: string
   city: string
@@ -110,7 +110,7 @@ export function setActivityStatus(id: string | number, status: 'taken_down' | 'o
 // ===== 活动分类 =====
 
 export interface AdminCategory {
-  id: string
+  id: number
   label: string
   icon: string
   sort: number
@@ -118,7 +118,6 @@ export interface AdminCategory {
 }
 
 export interface CategoryPayload {
-  id?: string
   label: string
   icon: string
   sort: number
@@ -133,10 +132,10 @@ export function createCategory(data: CategoryPayload) {
   return post<AdminCategory>('admin/activity-categories', data)
 }
 
-export function updateCategory(id: string, data: CategoryPayload) {
+export function updateCategory(id: number, data: CategoryPayload) {
   return put<AdminCategory>(`admin/activity-categories/${id}`, data)
 }
 
-export function deleteCategory(id: string) {
+export function deleteCategory(id: number) {
   return del(`admin/activity-categories/${id}`)
 }

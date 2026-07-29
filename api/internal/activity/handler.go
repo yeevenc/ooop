@@ -23,7 +23,7 @@ type Handler struct {
 
 type createRequest struct {
 	Title             string   `json:"title"`
-	CategoryID        string   `json:"category_id"`
+	CategoryID        int64    `json:"category_id"`
 	CategoryLabel     string   `json:"category_label"`
 	ActivityDate      string   `json:"activity_date"`
 	ActivityTime      string   `json:"activity_time"`
@@ -133,7 +133,7 @@ func (h *Handler) list(c *gin.Context) {
 
 	result, err := h.service.List(c.Request.Context(), ListQuery{
 		City:        c.Query("city"),
-		CategoryID:  c.Query("category_id"),
+		CategoryID:  int64(queryInt(c, "category_id", 0)),
 		Keyword:     c.Query("keyword"),
 		Latitude:    latitude,
 		Longitude:   longitude,

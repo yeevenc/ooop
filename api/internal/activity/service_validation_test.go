@@ -43,7 +43,7 @@ func TestCreateInputAllowsFiveActivityImages(t *testing.T) {
 func validCreateInputForImageTest() CreateInput {
 	return CreateInput{
 		Title:        "周末羽毛球",
-		CategoryID:   "sports",
+		CategoryID:   4,
 		LocationText: "羽毛球馆",
 		City:         "西安市",
 		Latitude:     34.2,

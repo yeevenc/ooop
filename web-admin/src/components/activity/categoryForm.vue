@@ -21,7 +21,6 @@ const emit = defineEmits<{
 const submitting = ref(false)
 const isEdit = ref(false)
 const form = reactive({
-  id: '',
   label: '',
   icon: '',
   sort: 0,
@@ -36,14 +35,12 @@ watch(
     }
     if (props.category) {
       isEdit.value = true
-      form.id = props.category.id
       form.label = props.category.label
       form.icon = props.category.icon
       form.sort = props.category.sort
       form.status = props.category.status
     } else {
       isEdit.value = false
-      form.id = ''
       form.label = ''
       form.icon = ''
       form.sort = 0
@@ -57,10 +54,6 @@ function handleClose() {
 }
 
 async function handleSubmit() {
-  if (!isEdit.value && !form.id.trim()) {
-    ElMessage.warning('请填写分类标识')
-    return
-  }
   if (!form.label.trim()) {
     ElMessage.warning('请填写分类名称')
     return
@@ -75,9 +68,9 @@ async function handleSubmit() {
       status: form.status,
     }
     if (isEdit.value) {
-      await updateCategory(form.id, payload)
+      await updateCategory(props.category!.id, payload)
     } else {
-      await createCategory({ ...payload, id: form.id.trim() })
+      await createCategory(payload)
     }
     ElMessage.success('保存成功')
     emit('success')
@@ -98,9 +91,6 @@ async function handleSubmit() {
     @update:model-value="handleClose"
   >
     <el-form :model="form" label-width="72px">
-      <el-form-item label="标识">
-        <el-input v-model="form.id" :disabled="isEdit" placeholder="英文标识，如 outdoor" />
-      </el-form-item>
       <el-form-item label="名称">
         <el-input v-model="form.label" maxlength="32" placeholder="分类名称" />
       </el-form-item>

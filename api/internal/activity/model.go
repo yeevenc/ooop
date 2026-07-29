@@ -18,7 +18,7 @@ type Activity struct {
 	ID            int64      `gorm:"primaryKey;autoIncrement" json:"id"`
 	UserID        int64      `gorm:"not null;index" json:"user_id"`
 	Title         string     `gorm:"size:80;not null" json:"title"`
-	CategoryID    string     `gorm:"size:32;not null;index" json:"category_id"`
+	CategoryID    int64      `gorm:"not null;index" json:"category_id"`
 	CategoryLabel string     `gorm:"size:32;not null" json:"category_label"`
 	ActivityDate  *time.Time `gorm:"index" json:"activity_date"`
 	ActivityTime  string     `gorm:"size:16;not null;default:''" json:"activity_time"`
@@ -61,7 +61,7 @@ type Organizer struct {
 type PublicActivity struct {
 	ID                string          `json:"id"`
 	Title             string          `json:"title"`
-	CategoryID        string          `json:"categoryId"`
+	CategoryID        int64           `json:"categoryId"`
 	CategoryLabel     string          `json:"categoryLabel"`
 	ImageURL          string          `json:"imageUrl"`
 	Gallery           []string        `json:"gallery"`
@@ -104,7 +104,7 @@ type ActivityFavorite struct {
 }
 
 type ActivityCategory struct {
-	ID        string    `gorm:"primaryKey;size:32" json:"id"`
+	ID        int64     `gorm:"primaryKey;autoIncrement" json:"id"`
 	Label     string    `gorm:"size:32;not null" json:"label"`
 	Icon      string    `gorm:"size:255;not null;default:''" json:"icon"`
 	Sort      int       `gorm:"not null;default:0;index" json:"sort"`
@@ -114,7 +114,7 @@ type ActivityCategory struct {
 }
 
 type PublicActivityCategory struct {
-	ID    string `json:"id"`
+	ID    int64  `json:"id"`
 	Label string `json:"label"`
 	Icon  string `json:"icon"`
 	Sort  int    `json:"sort"`

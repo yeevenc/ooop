@@ -28,7 +28,6 @@ var (
 	ErrTooManyImages   = errors.New("活动图片最多上传 5 张")
 	ErrNotFound        = errors.New("活动不存在")
 	ErrInvalidStatus   = errors.New("状态不合法")
-	ErrCategoryExists  = errors.New("分类标识已存在")
 	ErrCategoryMissing = errors.New("分类不存在")
 	ErrAlreadyFavorite = errors.New("已收藏该活动")
 
@@ -110,7 +109,7 @@ type ReviewNotifier interface {
 
 type CreateInput struct {
 	Title             string     `json:"title"`
-	CategoryID        string     `json:"category_id"`
+	CategoryID        int64      `json:"category_id"`
 	CategoryLabel     string     `json:"category_label"`
 	ActivityDate      *time.Time `json:"activity_date"`
 	ActivityTime      string     `json:"activity_time"`
@@ -129,16 +128,16 @@ type CreateInput struct {
 }
 
 var DefaultCategories = []ActivityCategory{
-	{ID: "outdoor", Label: "户外", Sort: 10, Status: CategoryEnabled},
-	{ID: "games", Label: "游戏", Sort: 20, Status: CategoryEnabled},
-	{ID: "food", Label: "美食", Sort: 30, Status: CategoryEnabled},
-	{ID: "sports", Label: "运动", Sort: 40, Status: CategoryEnabled},
-	{ID: "music", Label: "音乐", Sort: 50, Status: CategoryEnabled},
-	{ID: "photo", Label: "摄影", Sort: 60, Status: CategoryEnabled},
-	{ID: "art", Label: "艺术", Sort: 70, Status: CategoryEnabled},
-	{ID: "hiking", Label: "登山", Sort: 80, Status: CategoryEnabled},
-	{ID: "citywalk", Label: "城市漫步", Sort: 90, Status: CategoryEnabled},
-	{ID: "movie", Label: "电影", Sort: 100, Status: CategoryEnabled},
+	{Label: "户外", Sort: 10, Status: CategoryEnabled},
+	{Label: "游戏", Sort: 20, Status: CategoryEnabled},
+	{Label: "美食", Sort: 30, Status: CategoryEnabled},
+	{Label: "运动", Sort: 40, Status: CategoryEnabled},
+	{Label: "音乐", Sort: 50, Status: CategoryEnabled},
+	{Label: "摄影", Sort: 60, Status: CategoryEnabled},
+	{Label: "艺术", Sort: 70, Status: CategoryEnabled},
+	{Label: "登山", Sort: 80, Status: CategoryEnabled},
+	{Label: "城市漫步", Sort: 90, Status: CategoryEnabled},
+	{Label: "电影", Sort: 100, Status: CategoryEnabled},
 }
 
 const maxActivityImages = 5
@@ -190,7 +189,6 @@ func (s *Service) Create(ctx context.Context, userID int64, input CreateInput) (
 
 func (s *Service) List(ctx context.Context, query ListQuery) ([]PublicActivity, error) {
 	query.City = normalizeCity(query.City)
-	query.CategoryID = strings.TrimSpace(query.CategoryID)
 	query.Keyword = strings.TrimSpace(query.Keyword)
 
 	items, err := s.activities.List(ctx, query)
@@ -244,7 +242,7 @@ type ReviewActivityResult struct {
 // AdminActivityUpdate 后台编辑活动可改字段（仅文本类；日期/截止/坐标/图片/发起人/状态保持不变）。
 type AdminActivityUpdate struct {
 	Title             string
-	CategoryID        string
+	CategoryID        int64
 	ActivityTime      string
 	LocationText      string
 	City              string
@@ -257,7 +255,7 @@ type AdminActivityUpdate struct {
 }
 
 type AdminCategory struct {
-	ID     string `json:"id"`
+	ID     int64  `json:"id"`
 	Label  string `json:"label"`
 	Icon   string `json:"icon"`
 	Sort   int    `json:"sort"`
@@ -265,7 +263,6 @@ type AdminCategory struct {
 }
 
 type CategoryInput struct {
-	ID     string
 	Label  string
 	Icon   string
 	Sort   int
@@ -923,8 +920,8 @@ func (s *Service) UpdateActivity(ctx context.Context, id int64, input AdminActiv
 	if title == "" {
 		return PublicActivity{}, ErrInvalidTitle
 	}
-	categoryID := strings.TrimSpace(input.CategoryID)
-	if categoryID == "" {
+	categoryID := input.CategoryID
+	if categoryID <= 0 {
 		return PublicActivity{}, ErrInvalidCategory
 	}
 	locationText := strings.TrimSpace(input.LocationText)
@@ -1312,22 +1309,12 @@ func (s *Service) AdminListCategories(ctx context.Context) ([]AdminCategory, err
 }
 
 func (s *Service) CreateCategory(ctx context.Context, input CategoryInput) (AdminCategory, error) {
-	id := strings.TrimSpace(input.ID)
 	label := strings.TrimSpace(input.Label)
-	if id == "" || label == "" {
+	if label == "" {
 		return AdminCategory{}, ErrInvalidCategory
 	}
 
-	_, err := s.activities.FindCategoryByID(ctx, id)
-	if err == nil {
-		return AdminCategory{}, ErrCategoryExists
-	}
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return AdminCategory{}, err
-	}
-
 	item := ActivityCategory{
-		ID:     id,
 		Label:  label,
 		Icon:   strings.TrimSpace(input.Icon),
 		Sort:   input.Sort,
@@ -1339,8 +1326,7 @@ func (s *Service) CreateCategory(ctx context.Context, input CategoryInput) (Admi
 	return toAdminCategory(item), nil
 }
 
-func (s *Service) UpdateCategory(ctx context.Context, id string, input CategoryInput) (AdminCategory, error) {
-	id = strings.TrimSpace(id)
+func (s *Service) UpdateCategory(ctx context.Context, id int64, input CategoryInput) (AdminCategory, error) {
 	existing, err := s.activities.FindCategoryByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -1372,8 +1358,7 @@ func (s *Service) UpdateCategory(ctx context.Context, id string, input CategoryI
 	return toAdminCategory(existing), nil
 }
 
-func (s *Service) DeleteCategory(ctx context.Context, id string) error {
-	id = strings.TrimSpace(id)
+func (s *Service) DeleteCategory(ctx context.Context, id int64) error {
 	if _, err := s.activities.FindCategoryByID(ctx, id); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrCategoryMissing
@@ -1417,8 +1402,8 @@ func (input CreateInput) toModel(userID int64) (Activity, error) {
 		return Activity{}, ErrInvalidTitle
 	}
 
-	categoryID := strings.TrimSpace(input.CategoryID)
-	if categoryID == "" {
+	categoryID := input.CategoryID
+	if categoryID <= 0 {
 		return Activity{}, ErrInvalidCategory
 	}
 

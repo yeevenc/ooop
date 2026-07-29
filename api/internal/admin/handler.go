@@ -239,8 +239,7 @@ func writeResult(c *gin.Context, data interface{}, err error) {
 		errors.Is(err, activity.ErrInvalidCity),
 		errors.Is(err, activity.ErrInvalidIntro),
 		errors.Is(err, activity.ErrInvalidCount),
-		errors.Is(err, activity.ErrInvalidStatus),
-		errors.Is(err, activity.ErrCategoryExists):
+		errors.Is(err, activity.ErrInvalidStatus):
 		httpx.Fail(c, http.StatusBadRequest, 400004, err.Error())
 	case errors.Is(err, chat.ErrReportNotFound):
 		httpx.Fail(c, http.StatusNotFound, 404001, err.Error())

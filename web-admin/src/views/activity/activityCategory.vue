@@ -12,7 +12,7 @@ const list = ref<AdminCategory[]>([])
 const formVisible = ref(false)
 const editing = ref<AdminCategory | null>(null)
 
-// 分类数据量小，按名称/标识做本地过滤，输入即时生效。
+// 分类数据量小，按名称或 ID 做本地过滤，输入即时生效。
 const keyword = ref('')
 const filteredList = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
@@ -20,7 +20,7 @@ const filteredList = computed(() => {
     return list.value
   }
   return list.value.filter(
-    item => item.label.toLowerCase().includes(kw) || item.id.toLowerCase().includes(kw),
+    item => item.label.toLowerCase().includes(kw) || String(item.id).includes(kw),
   )
 })
 
@@ -76,7 +76,7 @@ onMounted(getList)
         <el-button type="primary" @click="handleCreate">新增分类</el-button>
       </div>
       <el-table v-loading="loading" :data="filteredList" stripe border>
-        <el-table-column prop="id" label="标识" min-width="140" />
+        <el-table-column prop="id" label="ID" width="100" />
         <el-table-column prop="label" label="名称" min-width="140" />
         <el-table-column label="图标" width="90">
           <template #default="{ row }">

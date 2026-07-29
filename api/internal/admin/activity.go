@@ -19,7 +19,6 @@ func (h *Handler) categoryList(c *gin.Context) {
 
 func (h *Handler) categoryCreate(c *gin.Context) {
 	var req struct {
-		ID     string `json:"id"`
 		Label  string `json:"label"`
 		Icon   string `json:"icon"`
 		Sort   int    `json:"sort"`
@@ -29,7 +28,6 @@ func (h *Handler) categoryCreate(c *gin.Context) {
 		return
 	}
 	result, err := h.activities.CreateCategory(c.Request.Context(), activity.CategoryInput{
-		ID:     req.ID,
 		Label:  req.Label,
 		Icon:   req.Icon,
 		Sort:   req.Sort,
@@ -39,6 +37,10 @@ func (h *Handler) categoryCreate(c *gin.Context) {
 }
 
 func (h *Handler) categoryUpdate(c *gin.Context) {
+	id, ok := parseCategoryID(c)
+	if !ok {
+		return
+	}
 	var req struct {
 		Label  string `json:"label"`
 		Icon   string `json:"icon"`
@@ -48,7 +50,7 @@ func (h *Handler) categoryUpdate(c *gin.Context) {
 	if !bindJSON(c, &req) {
 		return
 	}
-	result, err := h.activities.UpdateCategory(c.Request.Context(), c.Param("id"), activity.CategoryInput{
+	result, err := h.activities.UpdateCategory(c.Request.Context(), id, activity.CategoryInput{
 		Label:  req.Label,
 		Icon:   req.Icon,
 		Sort:   req.Sort,
@@ -58,7 +60,10 @@ func (h *Handler) categoryUpdate(c *gin.Context) {
 }
 
 func (h *Handler) categoryDelete(c *gin.Context) {
-	id := c.Param("id")
+	id, ok := parseCategoryID(c)
+	if !ok {
+		return
+	}
 	err := h.activities.DeleteCategory(c.Request.Context(), id)
 	writeResult(c, gin.H{"id": id}, err)
 }
@@ -67,7 +72,7 @@ func (h *Handler) categoryDelete(c *gin.Context) {
 
 type activityUpdateRequest struct {
 	Title             string `json:"title"`
-	CategoryID        string `json:"category_id"`
+	CategoryID        int64  `json:"category_id"`
 	ActivityTime      string `json:"activity_time"`
 	LocationText      string `json:"location_text"`
 	City              string `json:"city"`
@@ -99,7 +104,7 @@ func (h *Handler) activityList(c *gin.Context) {
 	result, err := h.activities.AdminListActivities(c.Request.Context(), activity.AdminActivityQuery{
 		Keyword:    c.Query("keyword"),
 		Status:     c.Query("status"),
-		CategoryID: c.Query("category_id"),
+		CategoryID: int64(queryInt(c, "category_id", 0)),
 		Page:       queryInt(c, "page", 1),
 		PageSize:   queryInt(c, "page_size", 10),
 	})
@@ -180,9 +185,17 @@ func (h *Handler) activityStatus(c *gin.Context) {
 }
 
 func parseActivityID(c *gin.Context) (int64, bool) {
+	return parsePositiveID(c, "活动")
+}
+
+func parseCategoryID(c *gin.Context) (int64, bool) {
+	return parsePositiveID(c, "分类")
+}
+
+func parsePositiveID(c *gin.Context, resource string) (int64, bool) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id <= 0 {
-		httpx.Fail(c, http.StatusBadRequest, 400001, "活动 ID 格式不正确")
+		httpx.Fail(c, http.StatusBadRequest, 400001, resource+" ID 格式不正确")
 		return 0, false
 	}
 	return id, true

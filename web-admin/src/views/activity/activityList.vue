@@ -42,7 +42,7 @@ const queryForm = reactive({
   pageSize: 10,
   keyword: '',
   status: '',
-  category_id: '',
+  category_id: null as number | null,
 })
 const editVisible = ref(false)
 const editId = ref<string | null>(null)
@@ -59,7 +59,7 @@ async function getList() {
       page_size: queryForm.pageSize,
       keyword: queryForm.keyword || undefined,
       status: queryForm.status || undefined,
-      category_id: queryForm.category_id || undefined,
+      category_id: queryForm.category_id ?? undefined,
     })
     tableData.value = res.data.list
     total.value = res.data.total

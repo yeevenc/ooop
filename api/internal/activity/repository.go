@@ -12,7 +12,7 @@ import (
 
 type ListQuery struct {
 	City        string
-	CategoryID  string
+	CategoryID  int64
 	Keyword     string
 	Latitude    float64
 	Longitude   float64
@@ -33,7 +33,7 @@ type UserActivityQuery struct {
 type AdminActivityQuery struct {
 	Keyword    string
 	Status     string
-	CategoryID string
+	CategoryID int64
 	Page       int
 	PageSize   int
 }
@@ -71,14 +71,14 @@ type Repository interface {
 	ListParticipantsByUser(ctx context.Context, userID int64, statuses []string) ([]ActivityParticipant, error)
 	CountByActivityIDsAndStatus(ctx context.Context, ids []int64, status string) (map[int64]int, error)
 	AdminList(ctx context.Context, query AdminActivityQuery) ([]Activity, int64, error)
-	FindCategory(ctx context.Context, id string) (ActivityCategory, error)
+	FindCategory(ctx context.Context, id int64) (ActivityCategory, error)
 	ListCategories(ctx context.Context) ([]ActivityCategory, error)
 	SaveCategories(ctx context.Context, items []ActivityCategory) error
 	AdminListCategories(ctx context.Context) ([]ActivityCategory, error)
-	FindCategoryByID(ctx context.Context, id string) (ActivityCategory, error)
+	FindCategoryByID(ctx context.Context, id int64) (ActivityCategory, error)
 	CreateCategory(ctx context.Context, item *ActivityCategory) error
-	UpdateCategory(ctx context.Context, id string, fields map[string]interface{}) error
-	DeleteCategory(ctx context.Context, id string) error
+	UpdateCategory(ctx context.Context, id int64, fields map[string]interface{}) error
+	DeleteCategory(ctx context.Context, id int64) error
 }
 
 type GormRepository struct {
@@ -148,7 +148,7 @@ func (r *GormRepository) List(ctx context.Context, query ListQuery) ([]Activity,
 	if query.City != "" {
 		db = db.Where("city = ?", query.City)
 	}
-	if query.CategoryID != "" && query.CategoryID != "all" {
+	if query.CategoryID > 0 {
 		db = db.Where("category_id = ?", query.CategoryID)
 	}
 	if keyword := strings.TrimSpace(query.Keyword); keyword != "" {
@@ -209,7 +209,7 @@ func (r *GormRepository) ListByUser(ctx context.Context, query UserActivityQuery
 	return items, err
 }
 
-func (r *GormRepository) FindCategory(ctx context.Context, id string) (ActivityCategory, error) {
+func (r *GormRepository) FindCategory(ctx context.Context, id int64) (ActivityCategory, error) {
 	var item ActivityCategory
 	err := r.db.WithContext(ctx).
 		Where("id = ? AND status = ?", id, CategoryEnabled).
@@ -231,13 +231,31 @@ func (r *GormRepository) SaveCategories(ctx context.Context, items []ActivityCat
 		return nil
 	}
 
-	// 仅补种缺失的默认分类，不覆盖管理员对已有分类的编辑（名称/图标/排序/状态）。
-	return r.db.WithContext(ctx).
-		Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "id"}},
-			DoNothing: true,
-		}).
-		Create(&items).Error
+	var existingLabels []string
+	if err := r.db.WithContext(ctx).
+		Model(&ActivityCategory{}).
+		Pluck("label", &existingLabels).Error; err != nil {
+		return err
+	}
+
+	existing := make(map[string]struct{}, len(existingLabels))
+	for _, label := range existingLabels {
+		existing[label] = struct{}{}
+	}
+
+	missing := make([]ActivityCategory, 0, len(items))
+	for _, item := range items {
+		if _, ok := existing[item.Label]; ok {
+			continue
+		}
+		missing = append(missing, item)
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+
+	// 默认分类只按名称补种，自增 ID 由数据库生成，不覆盖管理员已有配置。
+	return r.db.WithContext(ctx).Create(&missing).Error
 }
 
 func (r *GormRepository) FindByID(ctx context.Context, id int64) (Activity, error) {
@@ -332,7 +350,7 @@ func (r *GormRepository) AdminList(ctx context.Context, query AdminActivityQuery
 	if query.Status != "" {
 		db = db.Where("status = ?", query.Status)
 	}
-	if query.CategoryID != "" && query.CategoryID != "all" {
+	if query.CategoryID > 0 {
 		db = db.Where("category_id = ?", query.CategoryID)
 	}
 	if query.Keyword != "" {
@@ -357,7 +375,7 @@ func (r *GormRepository) AdminListCategories(ctx context.Context) ([]ActivityCat
 	return items, err
 }
 
-func (r *GormRepository) FindCategoryByID(ctx context.Context, id string) (ActivityCategory, error) {
+func (r *GormRepository) FindCategoryByID(ctx context.Context, id int64) (ActivityCategory, error) {
 	var item ActivityCategory
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(&item).Error
 	return item, err
@@ -367,11 +385,11 @@ func (r *GormRepository) CreateCategory(ctx context.Context, item *ActivityCateg
 	return r.db.WithContext(ctx).Create(item).Error
 }
 
-func (r *GormRepository) UpdateCategory(ctx context.Context, id string, fields map[string]interface{}) error {
+func (r *GormRepository) UpdateCategory(ctx context.Context, id int64, fields map[string]interface{}) error {
 	return r.db.WithContext(ctx).Model(&ActivityCategory{}).Where("id = ?", id).Updates(fields).Error
 }
 
-func (r *GormRepository) DeleteCategory(ctx context.Context, id string) error {
+func (r *GormRepository) DeleteCategory(ctx context.Context, id int64) error {
 	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&ActivityCategory{}).Error
 }
 
