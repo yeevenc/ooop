@@ -40,6 +40,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&user.User{},
 		&user.LoginCode{},
 		&activity.ActivityCategory{},
+		// 旧版 App 分类 ID 兼容表，完成兼容下线流程前必须保留。
+		&activity.ActivityCategoryLegacyID{},
 		&activity.Activity{},
 		&activity.ImageAuditTask{},
 		&activity.ActivityFavorite{},

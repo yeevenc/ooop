@@ -76,6 +76,7 @@ type Repository interface {
 	SaveCategories(ctx context.Context, items []ActivityCategory) error
 	AdminListCategories(ctx context.Context) ([]ActivityCategory, error)
 	FindCategoryByID(ctx context.Context, id int64) (ActivityCategory, error)
+	FindCategoryIDByLegacyID(ctx context.Context, legacyID string) (int64, error)
 	CreateCategory(ctx context.Context, item *ActivityCategory) error
 	UpdateCategory(ctx context.Context, id int64, fields map[string]interface{}) error
 	DeleteCategory(ctx context.Context, id int64) error
@@ -379,6 +380,14 @@ func (r *GormRepository) FindCategoryByID(ctx context.Context, id int64) (Activi
 	var item ActivityCategory
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(&item).Error
 	return item, err
+}
+
+func (r *GormRepository) FindCategoryIDByLegacyID(ctx context.Context, legacyID string) (int64, error) {
+	var item ActivityCategoryLegacyID
+	err := r.db.WithContext(ctx).
+		Where("legacy_id = ?", legacyID).
+		First(&item).Error
+	return item.CategoryID, err
 }
 
 func (r *GormRepository) CreateCategory(ctx context.Context, item *ActivityCategory) error {

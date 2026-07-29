@@ -224,6 +224,28 @@ func EnsureDefaultCategories(ctx context.Context, activities Repository) error {
 	return activities.SaveCategories(ctx, DefaultCategories)
 }
 
+// ResolveCategoryID 统一解析新版数字 ID、旧版数字字符串和兼容期英文 ID。
+// 旧版 App 仍可能提交缓存的英文 ID，确认旧版停用且请求日志无英文 ID 后才能移除此分支。
+func (s *Service) ResolveCategoryID(ctx context.Context, value string) (int64, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, ErrInvalidCategory
+	}
+
+	if id, err := strconv.ParseInt(value, 10, 64); err == nil && id > 0 {
+		return id, nil
+	}
+
+	id, err := s.activities.FindCategoryIDByLegacyID(ctx, value)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, ErrInvalidCategory
+		}
+		return 0, err
+	}
+	return id, nil
+}
+
 // ===== 后台管理（admin）方法 =====
 
 type AdminActivityListResult struct {

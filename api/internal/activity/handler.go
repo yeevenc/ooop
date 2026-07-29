@@ -1,6 +1,7 @@
 package activity
 
 import (
+	"encoding/json"
 	"errors"
 	"math"
 	"net/http"
@@ -15,30 +16,53 @@ import (
 	"ooop-admin-api/internal/httpx"
 )
 
+const (
+	// 旧版 App 兼容：缺少该请求头时分类 ID 必须按字符串返回，确认旧版停用前禁止删除。
+	categoryIDVersionHeader  = "X-App-Category-ID-Version"
+	numericCategoryIDVersion = "2"
+)
+
 type Handler struct {
 	service      *Service
 	tokenManager *auth.TokenManager
 	access       auth.AccessChecker
 }
 
+type categoryIDRequest string
+
+func (r *categoryIDRequest) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		*r = categoryIDRequest(strings.TrimSpace(text))
+		return nil
+	}
+
+	var number json.Number
+	if err := json.Unmarshal(data, &number); err != nil {
+		return err
+	}
+	*r = categoryIDRequest(number.String())
+	return nil
+}
+
 type createRequest struct {
-	Title             string   `json:"title"`
-	CategoryID        int64    `json:"category_id"`
-	CategoryLabel     string   `json:"category_label"`
-	ActivityDate      string   `json:"activity_date"`
-	ActivityTime      string   `json:"activity_time"`
-	DeadlineAt        string   `json:"deadline_at"`
-	LocationText      string   `json:"location_text"`
-	City              string   `json:"city"`
-	Latitude          float64  `json:"latitude"`
-	Longitude         float64  `json:"longitude"`
-	TotalCount        int      `json:"total_count"`
-	CostType          string   `json:"cost_type"`
-	FeeDetail         string   `json:"fee_detail"`
-	GenderRequirement string   `json:"gender_requirement"`
-	Intro             string   `json:"intro"`
-	Notice            string   `json:"notice"`
-	ImageURLs         []string `json:"image_urls"`
+	Title             string            `json:"title"`
+	CategoryID        categoryIDRequest `json:"category_id"`
+	CategoryLabel     string            `json:"category_label"`
+	ActivityDate      string            `json:"activity_date"`
+	ActivityTime      string            `json:"activity_time"`
+	DeadlineAt        string            `json:"deadline_at"`
+	LocationText      string            `json:"location_text"`
+	City              string            `json:"city"`
+	Latitude          float64           `json:"latitude"`
+	Longitude         float64           `json:"longitude"`
+	TotalCount        int               `json:"total_count"`
+	CostType          string            `json:"cost_type"`
+	FeeDetail         string            `json:"fee_detail"`
+	GenderRequirement string            `json:"gender_requirement"`
+	Intro             string            `json:"intro"`
+	Notice            string            `json:"notice"`
+	ImageURLs         []string          `json:"image_urls"`
 }
 
 func NewHandler(service *Service, tokenManager *auth.TokenManager, access auth.AccessChecker) *Handler {
@@ -96,7 +120,11 @@ func (h *Handler) create(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.Create(c.Request.Context(), userID, req.toInput())
+	input, ok := h.resolveCreateInput(c, req)
+	if !ok {
+		return
+	}
+	result, err := h.service.Create(c.Request.Context(), userID, input)
 	writeResult(c, result, err)
 }
 
@@ -118,11 +146,15 @@ func (h *Handler) updateOwnedActivity(c *gin.Context) {
 		return
 	}
 
+	input, ok := h.resolveCreateInput(c, req)
+	if !ok {
+		return
+	}
 	result, err := h.service.UpdateOwnedActivity(
 		c.Request.Context(),
 		userID,
 		id,
-		req.toInput(),
+		input,
 	)
 	writeResult(c, result, err)
 }
@@ -130,10 +162,14 @@ func (h *Handler) updateOwnedActivity(c *gin.Context) {
 func (h *Handler) list(c *gin.Context) {
 	latitude, hasLatitude := queryFloat(c, "latitude")
 	longitude, hasLongitude := queryFloat(c, "longitude")
+	categoryID, ok := h.resolveOptionalCategoryID(c)
+	if !ok {
+		return
+	}
 
 	result, err := h.service.List(c.Request.Context(), ListQuery{
 		City:        c.Query("city"),
-		CategoryID:  int64(queryInt(c, "category_id", 0)),
+		CategoryID:  categoryID,
 		Keyword:     c.Query("keyword"),
 		Latitude:    latitude,
 		Longitude:   longitude,
@@ -429,10 +465,35 @@ func (h *Handler) userJoined(c *gin.Context) {
 	writeResult(c, result, err)
 }
 
-func (r createRequest) toInput() CreateInput {
+func (h *Handler) resolveCreateInput(c *gin.Context, request createRequest) (CreateInput, bool) {
+	categoryID, err := h.service.ResolveCategoryID(
+		c.Request.Context(),
+		string(request.CategoryID),
+	)
+	if err != nil {
+		writeResult(c, nil, err)
+		return CreateInput{}, false
+	}
+	return request.toInput(categoryID), true
+}
+
+func (h *Handler) resolveOptionalCategoryID(c *gin.Context) (int64, bool) {
+	value := strings.TrimSpace(c.Query("category_id"))
+	if value == "" {
+		return 0, true
+	}
+	categoryID, err := h.service.ResolveCategoryID(c.Request.Context(), value)
+	if err != nil {
+		writeResult(c, nil, err)
+		return 0, false
+	}
+	return categoryID, true
+}
+
+func (r createRequest) toInput(categoryID int64) CreateInput {
 	return CreateInput{
 		Title:             r.Title,
-		CategoryID:        r.CategoryID,
+		CategoryID:        categoryID,
 		CategoryLabel:     r.CategoryLabel,
 		ActivityDate:      parseOptionalTime(r.ActivityDate),
 		ActivityTime:      r.ActivityTime,
@@ -520,7 +581,7 @@ func validCoordinate(latitude, longitude float64) bool {
 
 func writeResult(c *gin.Context, data interface{}, err error) {
 	if err == nil {
-		httpx.OK(c, data)
+		httpx.OK(c, adaptCategoryIDResponse(c, data))
 		return
 	}
 
@@ -555,5 +616,50 @@ func writeResult(c *gin.Context, data interface{}, err error) {
 		httpx.Fail(c, http.StatusBadRequest, 400004, err.Error())
 	default:
 		httpx.Fail(c, http.StatusInternalServerError, 500001, err.Error())
+	}
+}
+
+type legacyPublicActivity struct {
+	PublicActivity
+	CategoryID string `json:"categoryId"`
+}
+
+type legacyPublicActivityCategory struct {
+	PublicActivityCategory
+	ID string `json:"id"`
+}
+
+func adaptCategoryIDResponse(c *gin.Context, data interface{}) interface{} {
+	if strings.TrimSpace(c.GetHeader(categoryIDVersionHeader)) == numericCategoryIDVersion {
+		return data
+	}
+
+	// 旧版 App 按字符串校验分类 ID；提前删除此转换会导致旧版分类列表、发布和筛选异常。
+	switch value := data.(type) {
+	case PublicActivity:
+		return legacyPublicActivity{
+			PublicActivity: value,
+			CategoryID:     strconv.FormatInt(value.CategoryID, 10),
+		}
+	case []PublicActivity:
+		result := make([]legacyPublicActivity, 0, len(value))
+		for _, item := range value {
+			result = append(result, legacyPublicActivity{
+				PublicActivity: item,
+				CategoryID:     strconv.FormatInt(item.CategoryID, 10),
+			})
+		}
+		return result
+	case []PublicActivityCategory:
+		result := make([]legacyPublicActivityCategory, 0, len(value))
+		for _, item := range value {
+			result = append(result, legacyPublicActivityCategory{
+				PublicActivityCategory: item,
+				ID:                     strconv.FormatInt(item.ID, 10),
+			})
+		}
+		return result
+	default:
+		return data
 	}
 }

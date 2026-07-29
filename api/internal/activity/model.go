@@ -113,6 +113,14 @@ type ActivityCategory struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// ActivityCategoryLegacyID 仅用于兼容旧版 App。
+// 禁止直接删除：需先确认旧版停用、请求日志无英文 ID，并下线服务端兼容解析。
+type ActivityCategoryLegacyID struct {
+	LegacyID   string    `gorm:"primaryKey;size:32" json:"legacy_id"`
+	CategoryID int64     `gorm:"not null;uniqueIndex" json:"category_id"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
 type PublicActivityCategory struct {
 	ID    int64  `json:"id"`
 	Label string `json:"label"`
