@@ -276,24 +276,14 @@ func (h *Handler) join(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Count       int    `json:"count"`
-		Remark      string `json:"remark"`
-		ContactInfo string `json:"contact_info"`
-		ContactText string `json:"contactInfo"`
-		Contact     string `json:"contact"`
+		Count  int    `json:"count"`
+		Remark string `json:"remark"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		httpx.Fail(c, http.StatusBadRequest, 400001, "请求参数格式不正确")
 		return
 	}
-	contactInfo := req.ContactInfo
-	if contactInfo == "" {
-		contactInfo = req.ContactText
-	}
-	if contactInfo == "" {
-		contactInfo = req.Contact
-	}
-	err := h.service.JoinActivity(c.Request.Context(), userID, id, req.Count, req.Remark, contactInfo)
+	err := h.service.JoinActivity(c.Request.Context(), userID, id, req.Count, req.Remark)
 	writeResult(c, gin.H{"joined": true}, err)
 }
 
@@ -611,7 +601,6 @@ func writeResult(c *gin.Context, data interface{}, err error) {
 		errors.Is(err, ErrActivityFull),
 		errors.Is(err, ErrActivityNotJoinable),
 		errors.Is(err, ErrRejectReasonMissing),
-		errors.Is(err, ErrInvalidContactInfo),
 		errors.Is(err, ErrActivityStarted):
 		httpx.Fail(c, http.StatusBadRequest, 400004, err.Error())
 	default:
