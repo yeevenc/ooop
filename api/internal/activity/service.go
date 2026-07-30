@@ -58,7 +58,8 @@ type PublicParticipant struct {
 	AvatarColor string `json:"avatarColor"`
 	IsOnline    bool   `json:"isOnline"`
 	// Count 该成员报名人数（本人 + 同行）
-	Count int `json:"count"`
+	Count     int    `json:"count"`
+	EntryCode string `json:"entryCode,omitempty"`
 }
 
 // PublicApplicant 待审核申请人（发起人「申请人审核」用）。
@@ -610,7 +611,22 @@ func (s *Service) ListApprovedParticipants(ctx context.Context, activityID int64
 	if _, err := s.findActivity(ctx, activityID); err != nil {
 		return nil, err
 	}
+	return s.listApprovedParticipants(ctx, activityID, false)
+}
 
+// ListManagedParticipants 返回发起人管理活动时可见的已通过成员及参加编号。
+func (s *Service) ListManagedParticipants(ctx context.Context, organizerID, activityID int64) ([]PublicParticipant, error) {
+	item, err := s.findActivity(ctx, activityID)
+	if err != nil {
+		return nil, err
+	}
+	if item.UserID != organizerID {
+		return nil, ErrNotOrganizer
+	}
+	return s.listApprovedParticipants(ctx, activityID, true)
+}
+
+func (s *Service) listApprovedParticipants(ctx context.Context, activityID int64, includeEntryCode bool) ([]PublicParticipant, error) {
 	parts, err := s.activities.ListParticipantsByActivity(ctx, activityID, []string{ParticipantStatusApproved}, 0)
 	if err != nil {
 		return nil, err
@@ -624,6 +640,10 @@ func (s *Service) ListApprovedParticipants(ctx context.Context, activityID int64
 		if count < 1 {
 			count = 1
 		}
+		entryCode := ""
+		if includeEntryCode {
+			entryCode = p.EntryCode
+		}
 		list = append(list, PublicParticipant{
 			ID:          strconv.FormatInt(p.ID, 10),
 			UserID:      strconv.FormatInt(p.UserID, 10),
@@ -633,6 +653,7 @@ func (s *Service) ListApprovedParticipants(ctx context.Context, activityID int64
 			AvatarColor: "#8fa061",
 			IsOnline:    false,
 			Count:       count,
+			EntryCode:   entryCode,
 		})
 	}
 	return list, nil

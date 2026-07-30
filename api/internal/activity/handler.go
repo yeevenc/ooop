@@ -99,6 +99,7 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	group.GET("/:id/my-participation", h.appAuth(), h.myParticipation)
 	// 已报名成功成员列表（公开，仅 approved）
 	group.GET("/:id/participants", h.listParticipants)
+	group.GET("/:id/managed-participants", h.appAuth(), h.managedParticipants)
 	group.GET("/:id/applicants", h.appAuth(), h.applicants)
 	group.PUT("/:id/applicants/:uid", h.appAuth(), h.reviewApplicant)
 
@@ -385,6 +386,21 @@ func (h *Handler) listParticipants(c *gin.Context) {
 		return
 	}
 	result, err := h.service.ListApprovedParticipants(c.Request.Context(), id)
+	writeResult(c, result, err)
+}
+
+// managedParticipants 发起人查看已通过成员及参加编号。
+func (h *Handler) managedParticipants(c *gin.Context) {
+	userID, ok := auth.CurrentUserID(c)
+	if !ok {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录")
+		return
+	}
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	result, err := h.service.ListManagedParticipants(c.Request.Context(), userID, id)
 	writeResult(c, result, err)
 }
 
