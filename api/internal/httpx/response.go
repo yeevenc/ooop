@@ -13,6 +13,14 @@ type Response struct {
 	Data    interface{} `json:"data,omitempty"`
 }
 
+// PreventSensitiveResponseCaching 禁止网关、CDN 和客户端复用鉴权响应。
+func PreventSensitiveResponseCaching(c *gin.Context) {
+	c.Header("Cache-Control", "no-store, private")
+	c.Header("Pragma", "no-cache")
+	c.Header("Expires", "0")
+	c.Writer.Header().Add("Vary", "Authorization")
+}
+
 func OK(c *gin.Context, data interface{}) {
 	c.JSON(http.StatusOK, Response{
 		Code:    0,

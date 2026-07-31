@@ -34,6 +34,8 @@ func Middleware(tokenManager *TokenManager, checkers ...AccessChecker) gin.Handl
 	}
 
 	return func(c *gin.Context) {
+		httpx.PreventSensitiveResponseCaching(c)
+
 		header := c.GetHeader("Authorization")
 		token := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
 		if token == "" || token == header {
