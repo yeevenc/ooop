@@ -39,6 +39,22 @@ func (pushTestRepository) DeleteByUser(context.Context, int64) (int64, error) {
 	return 0, nil
 }
 
+type messageQueryCaptureRepository struct {
+	pushTestRepository
+	query UserMessageQuery
+}
+
+func (r *messageQueryCaptureRepository) ListByUser(_ context.Context, query UserMessageQuery) ([]UserMessage, error) {
+	r.query = query
+	return []UserMessage{{
+		ID:      88,
+		UserID:  query.UserID,
+		Type:    TypeSystem,
+		Title:   "当前用户消息",
+		Content: "仅返回当前用户的数据",
+	}}, nil
+}
+
 type capturePushSender struct {
 	payload provider.PushPayload
 }
@@ -109,5 +125,21 @@ func TestActivityRejectMessageContainsImageAuditReason(t *testing.T) {
 	}
 	if pusher.payload.Alert != "您发布的周末徒步审核拒绝：第1张图片命中色情低俗内容" {
 		t.Fatalf("Alert = %s", pusher.payload.Alert)
+	}
+}
+
+func TestListUserMessagesUsesCurrentUser(t *testing.T) {
+	repository := &messageQueryCaptureRepository{}
+	service := NewService(repository, nil, nil)
+
+	result, err := service.ListUserMessages(context.Background(), 3001, 1, 20)
+	if err != nil {
+		t.Fatalf("ListUserMessages() error = %v", err)
+	}
+	if repository.query.UserID != 3001 {
+		t.Fatalf("ListByUser user = %d, want 3001", repository.query.UserID)
+	}
+	if len(result) != 1 || result[0].ID != "88" {
+		t.Fatalf("result = %+v", result)
 	}
 }

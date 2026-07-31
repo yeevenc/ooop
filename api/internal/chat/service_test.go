@@ -17,6 +17,10 @@ type serviceTestRepository struct {
 	conversation              Conversation
 	messageItems              []Message
 	messageQuery              MessageQuery
+	listConversationsUserID   int64
+	findConversationID        int64
+	findConversationUserID    int64
+	findConversationErr       error
 	deletedConversationID     int64
 	deletedConversationUserID int64
 }
@@ -36,12 +40,15 @@ func (r *serviceTestRepository) CreateMessage(_ context.Context, params CreateMe
 	}, true, nil
 }
 
-func (r *serviceTestRepository) ListConversations(context.Context, int64, int, int) ([]Conversation, error) {
+func (r *serviceTestRepository) ListConversations(_ context.Context, userID int64, _ int, _ int) ([]Conversation, error) {
+	r.listConversationsUserID = userID
 	return r.conversations, nil
 }
 
-func (r *serviceTestRepository) FindConversationForUser(context.Context, int64, int64) (Conversation, error) {
-	return r.conversation, nil
+func (r *serviceTestRepository) FindConversationForUser(_ context.Context, conversationID int64, userID int64) (Conversation, error) {
+	r.findConversationID = conversationID
+	r.findConversationUserID = userID
+	return r.conversation, r.findConversationErr
 }
 
 func (r *serviceTestRepository) ListMessages(_ context.Context, query MessageQuery) ([]Message, error) {
@@ -225,6 +232,9 @@ func TestListConversationsReturnsOtherUserGender(t *testing.T) {
 	if len(result.List) != 1 || result.List[0].OtherUser.Gender != "女" {
 		t.Fatalf("result = %+v", result)
 	}
+	if repository.listConversationsUserID != 3000 {
+		t.Fatalf("ListConversations user = %d, want 3000", repository.listConversationsUserID)
+	}
 }
 
 func TestListMessagesAppliesUserDeleteBoundary(t *testing.T) {
@@ -241,6 +251,37 @@ func TestListMessagesAppliesUserDeleteBoundary(t *testing.T) {
 	}
 	if repository.messageQuery.DeletedBeforeID != 42 {
 		t.Fatalf("DeletedBeforeID = %d, want 42", repository.messageQuery.DeletedBeforeID)
+	}
+	if repository.findConversationID != 9 || repository.findConversationUserID != 3000 {
+		t.Fatalf(
+			"FindConversationForUser conversation = %d, user = %d",
+			repository.findConversationID,
+			repository.findConversationUserID,
+		)
+	}
+}
+
+func TestListMessagesRejectsUserOutsideConversation(t *testing.T) {
+	repository := &serviceTestRepository{findConversationErr: ErrNotFound}
+	service := NewService(repository, serviceTestUsers{}, nil, 7*24*time.Hour)
+
+	_, err := service.ListMessages(
+		context.Background(),
+		3002,
+		MessageQuery{ConversationID: 9},
+	)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("ListMessages() error = %v, want ErrNotFound", err)
+	}
+	if repository.findConversationID != 9 || repository.findConversationUserID != 3002 {
+		t.Fatalf(
+			"FindConversationForUser conversation = %d, user = %d",
+			repository.findConversationID,
+			repository.findConversationUserID,
+		)
+	}
+	if repository.messageQuery.ConversationID != 0 {
+		t.Fatalf("non-member reached ListMessages: %+v", repository.messageQuery)
 	}
 }
 
