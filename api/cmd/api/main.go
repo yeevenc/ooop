@@ -141,7 +141,6 @@ func main() {
 	router.GET("/health", func(c *gin.Context) {
 		httpx.OK(c, gin.H{"status": "ok"})
 	})
-	router.Static("/uploads", "./uploads")
 	legal.NewHandler().Register(router)
 
 	api := router.Group("/api/v1")
