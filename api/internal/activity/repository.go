@@ -36,6 +36,7 @@ type AdminActivityQuery struct {
 	CategoryID int64
 	Page       int
 	PageSize   int
+	Now        time.Time
 }
 
 type Repository interface {
@@ -348,7 +349,20 @@ func (r *GormRepository) AdminList(ctx context.Context, query AdminActivityQuery
 	var total int64
 
 	db := r.db.WithContext(ctx).Model(&Activity{})
-	if query.Status != "" {
+	now := query.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	switch query.Status {
+	case StatusOngoing:
+		db = db.Where("status = ?", StatusOngoing).
+			Where("activity_date IS NULL OR activity_date > ?", now)
+	case StatusEnded:
+		db = db.Where("status = ?", StatusOngoing).
+			Where("activity_date IS NOT NULL AND activity_date <= ?", now)
+	case "":
+		// 不限制状态
+	default:
 		db = db.Where("status = ?", query.Status)
 	}
 	if query.CategoryID > 0 {

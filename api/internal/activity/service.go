@@ -292,6 +292,7 @@ type CategoryInput struct {
 func (s *Service) AdminListActivities(ctx context.Context, query AdminActivityQuery) (AdminActivityListResult, error) {
 	query.Keyword = strings.TrimSpace(query.Keyword)
 	query.Status = strings.TrimSpace(query.Status)
+	query.Now = time.Now()
 	if query.Page <= 0 {
 		query.Page = 1
 	}
@@ -306,7 +307,7 @@ func (s *Service) AdminListActivities(ctx context.Context, query AdminActivityQu
 
 	list := make([]PublicActivity, 0, len(items))
 	for _, item := range items {
-		list = append(list, s.toPublic(ctx, item))
+		list = append(list, s.toAdminPublic(ctx, item, query.Now))
 	}
 
 	return AdminActivityListResult{
@@ -322,7 +323,7 @@ func (s *Service) GetActivityByID(ctx context.Context, id int64) (PublicActivity
 	if err != nil {
 		return PublicActivity{}, err
 	}
-	return s.toPublic(ctx, item), nil
+	return s.toAdminPublic(ctx, item, time.Now()), nil
 }
 
 func (s *Service) GetPublicActivityByIDForUser(ctx context.Context, id int64, userID int64) (PublicActivity, error) {
@@ -1533,6 +1534,20 @@ func (s *Service) toPublic(ctx context.Context, item Activity) PublicActivity {
 		PendingCount:      0,
 		CreatedAt:         item.CreatedAt,
 	}
+}
+
+// toAdminPublic 在不修改数据库状态的前提下，统一补充后台展示状态。
+func (s *Service) toAdminPublic(ctx context.Context, item Activity, now time.Time) PublicActivity {
+	result := s.toPublic(ctx, item)
+	result.Status = adminDisplayStatus(item, now)
+	return result
+}
+
+func adminDisplayStatus(item Activity, now time.Time) string {
+	if item.Status == StatusOngoing && item.ActivityDate != nil && !item.ActivityDate.After(now) {
+		return StatusEnded
+	}
+	return item.Status
 }
 
 func (s *Service) organizer(ctx context.Context, userID int64) Organizer {

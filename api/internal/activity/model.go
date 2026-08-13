@@ -5,6 +5,7 @@ import "time"
 const (
 	StatusPending   = "pending"    // 待审核
 	StatusOngoing   = "ongoing"    // 已通过/进行中，App 可见
+	StatusEnded     = "ended"      // 已结束，仅用于后台按活动时间派生展示
 	StatusRejected  = "rejected"   // 审核拒绝
 	StatusTakenDown = "taken_down" // 已下架
 	StatusCancelled = "cancelled"  // 发起人取消

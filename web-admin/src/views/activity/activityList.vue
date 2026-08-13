@@ -20,6 +20,7 @@ defineOptions({ name: 'activityList' })
 const STATUS_OPTIONS = [
   { label: '待审核', value: 'pending' },
   { label: '进行中', value: 'ongoing' },
+  { label: '已结束', value: 'ended' },
   { label: '已拒绝', value: 'rejected' },
   { label: '已下架', value: 'taken_down' },
   { label: '已取消', value: 'cancelled' },
@@ -28,6 +29,7 @@ const STATUS_OPTIONS = [
 const statusMeta: Record<string, { text: string; type: 'warning' | 'success' | 'danger' | 'info' }> = {
   pending: { text: '待审核', type: 'warning' },
   ongoing: { text: '进行中', type: 'success' },
+  ended: { text: '已结束', type: 'info' },
   rejected: { text: '已拒绝', type: 'danger' },
   taken_down: { text: '已下架', type: 'info' },
   cancelled: { text: '已取消', type: 'info' },
