@@ -16,19 +16,22 @@ const (
 )
 
 type Activity struct {
-	ID            int64      `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID        int64      `gorm:"not null;index" json:"user_id"`
-	Title         string     `gorm:"size:80;not null" json:"title"`
-	CategoryID    int64      `gorm:"not null;index" json:"category_id"`
-	CategoryLabel string     `gorm:"size:32;not null" json:"category_label"`
-	ActivityDate  *time.Time `gorm:"index" json:"activity_date"`
-	ActivityTime  string     `gorm:"size:16;not null;default:''" json:"activity_time"`
-	DeadlineAt    *time.Time `gorm:"index" json:"deadline_at"`
-	LocationText  string     `gorm:"size:255;not null" json:"location_text"`
-	City          string     `gorm:"size:64;not null;index" json:"city"`
-	Latitude      float64    `gorm:"not null" json:"latitude"`
-	Longitude     float64    `gorm:"not null" json:"longitude"`
-	TotalCount    int        `gorm:"not null;default:2" json:"total_count"`
+	IsOfficial                  bool       `gorm:"not null;default:false;index" json:"is_official"`
+	IsPinned                    bool       `gorm:"not null;default:false;index" json:"is_pinned"`
+	IntentNotificationsPrepared bool       `gorm:"not null;default:false" json:"-"`
+	ID                          int64      `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID                      int64      `gorm:"not null;index" json:"user_id"`
+	Title                       string     `gorm:"size:80;not null" json:"title"`
+	CategoryID                  int64      `gorm:"not null;index" json:"category_id"`
+	CategoryLabel               string     `gorm:"size:32;not null" json:"category_label"`
+	ActivityDate                *time.Time `gorm:"index" json:"activity_date"`
+	ActivityTime                string     `gorm:"size:16;not null;default:''" json:"activity_time"`
+	DeadlineAt                  *time.Time `gorm:"index" json:"deadline_at"`
+	LocationText                string     `gorm:"size:255;not null" json:"location_text"`
+	City                        string     `gorm:"size:64;not null;index" json:"city"`
+	Latitude                    float64    `gorm:"not null" json:"latitude"`
+	Longitude                   float64    `gorm:"not null" json:"longitude"`
+	TotalCount                  int        `gorm:"not null;default:2" json:"total_count"`
 	// CurrentCount 已通过报名占用的名额（不含发起人；新建活动为 0）
 	CurrentCount      int        `gorm:"not null;default:0" json:"current_count"`
 	CostType          string     `gorm:"size:32;not null;default:''" json:"cost_type"`
@@ -57,9 +60,12 @@ type Organizer struct {
 	PersonalityLabel string  `json:"personalityLabel"`
 	CompletionRate   int     `json:"completionRate"`
 	Verified         bool    `json:"verified"`
+	IsOfficial       bool    `json:"isOfficial"`
 }
 
 type PublicActivity struct {
+	IsOfficial        bool            `json:"isOfficial"`
+	IsPinned          bool            `json:"isPinned"`
 	ID                string          `json:"id"`
 	Title             string          `json:"title"`
 	CategoryID        int64           `json:"categoryId"`

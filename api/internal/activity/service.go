@@ -173,6 +173,12 @@ func (s *Service) Create(ctx context.Context, userID int64, input CreateInput) (
 		return PublicActivity{}, err
 	}
 	item.CategoryLabel = category.Label
+	owner, ownerErr := s.users.FindByID(ctx, userID)
+	if ownerErr != nil {
+		return PublicActivity{}, ownerErr
+	}
+	item.IsOfficial = owner.IsOfficial
+	item.IsPinned = owner.IsOfficial
 
 	task := ImageAuditTask{
 		ImageURLsJSON: item.GalleryJSON,
@@ -1501,6 +1507,8 @@ func (s *Service) toPublic(ctx context.Context, item Activity) PublicActivity {
 	}
 
 	return PublicActivity{
+		IsOfficial:        item.IsOfficial,
+		IsPinned:          item.IsPinned,
 		ID:                strconv.FormatInt(item.ID, 10),
 		Title:             item.Title,
 		CategoryID:        item.CategoryID,
@@ -1563,6 +1571,7 @@ func (s *Service) organizer(ctx context.Context, userID int64) Organizer {
 			PersonalityLabel: "",
 			CompletionRate:   0,
 			Verified:         false,
+			IsOfficial:       false,
 		}
 	}
 
@@ -1585,6 +1594,7 @@ func (s *Service) organizer(ctx context.Context, userID int64) Organizer {
 		PersonalityLabel: "",
 		CompletionRate:   100,
 		Verified:         item.RealNameVerified,
+		IsOfficial:       item.IsOfficial,
 	}
 }
 

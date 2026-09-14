@@ -28,6 +28,7 @@ type UserRepository interface {
 	UpdateRealNameVerification(ctx context.Context, id int64, realName string, idCardMask string, gender string, verifiedAt time.Time) error
 	// UpdateBanStatus 更新封禁状态；bannedUntil 为 nil 表示永久封禁或已解封。
 	UpdateBanStatus(ctx context.Context, id int64, status int, bannedUntil *time.Time, banReason string) error
+	UpdateOfficialStatus(ctx context.Context, id int64, isOfficial bool) error
 	TouchLastLogin(ctx context.Context, id int64, loginAt time.Time, meta ClientMeta) error
 	CancelAccount(ctx context.Context, id int64) error
 }
@@ -214,6 +215,10 @@ func (r *GormUserRepository) UpdateBanStatus(ctx context.Context, id int64, stat
 		"ban_reason":   banReason,
 	}
 	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *GormUserRepository) UpdateOfficialStatus(ctx context.Context, id int64, isOfficial bool) error {
+	return r.db.WithContext(ctx).Model(&User{}).Where("id = ?", id).Update("is_official", isOfficial).Error
 }
 
 func (r *GormUserRepository) TouchLastLogin(ctx context.Context, id int64, loginAt time.Time, meta ClientMeta) error {

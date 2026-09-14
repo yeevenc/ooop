@@ -49,6 +49,7 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	// 封禁后 APP 登录与鉴权返回 code=403002
 	protected.PUT("/users/:id/ban", h.banUser)
 	protected.PUT("/users/:id/unban", h.unbanUser)
+	protected.PUT("/users/:id/official", h.setUserOfficial)
 
 	// 活动分类管理
 	protected.GET("/activity-categories", h.categoryList)
@@ -157,6 +158,28 @@ func (h *Handler) banUser(c *gin.Context) {
 	}
 
 	result, err := h.appUsers.BanUser(c.Request.Context(), id, req)
+	if err != nil {
+		writeResult(c, nil, err)
+		return
+	}
+	writeResult(c, ToAdminUserResponse(result), nil)
+}
+
+func (h *Handler) setUserOfficial(c *gin.Context) {
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || id <= 0 {
+		httpx.Fail(c, http.StatusBadRequest, 400001, "用户 ID 格式不正确")
+		return
+	}
+
+	var req struct {
+		IsOfficial bool `json:"is_official"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+
+	result, err := h.appUsers.SetOfficial(c.Request.Context(), id, req.IsOfficial)
 	if err != nil {
 		writeResult(c, nil, err)
 		return

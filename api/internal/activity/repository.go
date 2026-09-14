@@ -187,7 +187,7 @@ func (r *GormRepository) List(ctx context.Context, query ListQuery) ([]Activity,
 		)
 	}
 
-	err := db.Order(orderBy).
+	err := db.Order("is_pinned DESC").Order(orderBy + ", id DESC").
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		Find(&items).Error

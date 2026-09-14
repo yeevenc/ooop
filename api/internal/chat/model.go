@@ -85,10 +85,11 @@ type PublicMessage struct {
 }
 
 type PublicConversationUser struct {
-	ID       string `json:"id"`
-	Nickname string `json:"nickname"`
-	Avatar   string `json:"avatar"`
-	Gender   string `json:"gender"`
+	ID         string `json:"id"`
+	Nickname   string `json:"nickname"`
+	Avatar     string `json:"avatar"`
+	Gender     string `json:"gender"`
+	IsOfficial bool   `json:"isOfficial"`
 }
 
 type PublicConversation struct {

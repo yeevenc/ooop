@@ -4,6 +4,7 @@ import "ooop-admin-api/internal/user"
 
 // AdminUserResponse 后台管理系统的App用户响应结构，时间字段使用 AdminTime 格式化为 YYYY-MM-DD HH:mm:ss。
 type AdminUserResponse struct {
+	IsOfficial bool `json:"is_official"`
 	ID                 int64      `json:"id"`
 	Phone              string     `json:"phone"`
 	Username           string     `json:"username"`
@@ -38,6 +39,7 @@ type AdminUserResponse struct {
 // ToAdminUserResponse 将 user.PublicUser 转换为后台管理的 AdminUserResponse 格式。
 func ToAdminUserResponse(u user.PublicUser) AdminUserResponse {
 	return AdminUserResponse{
+		IsOfficial: u.IsOfficial,
 		ID:                 u.ID,
 		Phone:              u.Phone,
 		Username:           u.Username,

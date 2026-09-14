@@ -27,6 +27,7 @@ const (
 )
 
 type User struct {
+	IsOfficial           bool       `gorm:"not null;default:false" json:"is_official"`
 	ID                   int64      `gorm:"primaryKey;autoIncrement" json:"id"`
 	Phone                string     `gorm:"size:20;not null;uniqueIndex" json:"phone"`
 	Username             *string    `gorm:"size:64;uniqueIndex" json:"username"`
@@ -76,6 +77,7 @@ type LoginCode struct {
 }
 
 type PublicUser struct {
+	IsOfficial           bool                 `json:"is_official"`
 	ID                   int64                `json:"id"`
 	Phone                string               `json:"phone"`
 	Username             string               `json:"username"`
@@ -110,6 +112,7 @@ type PublicUser struct {
 
 func ToPublicUser(item User) PublicUser {
 	return PublicUser{
+		IsOfficial:           item.IsOfficial,
 		ID:                   item.ID,
 		Phone:                item.Phone,
 		Username:             stringValue(item.Username),
@@ -205,6 +208,7 @@ type UserPublicProfile struct {
 	Region           string    `json:"region"`
 	Bio              string    `json:"bio"`
 	CreditScore      int       `json:"creditScore"`
+	IsOfficial       bool      `json:"isOfficial"`
 	RealNameVerified bool      `json:"realNameVerified"`
 	CreatedAt        time.Time `json:"createdAt"`
 	PublishedCount   int       `json:"publishedCount"`
@@ -222,6 +226,7 @@ func ToUserPublicProfile(item User) UserPublicProfile {
 		Region:           publicRegion(item),
 		Bio:              item.Bio,
 		CreditScore:      item.CreditScore,
+		IsOfficial:       item.IsOfficial,
 		RealNameVerified: item.RealNameVerified,
 		CreatedAt:        item.CreatedAt,
 	}

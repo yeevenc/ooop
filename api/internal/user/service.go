@@ -777,6 +777,17 @@ func (s *AuthService) BanUser(ctx context.Context, userID int64, input BanUserIn
 	return s.Profile(ctx, userID)
 }
 
+// SetOfficial 后台设置或取消 APP 用户的官方身份；App 资料接口不能改这个字段。
+func (s *AuthService) SetOfficial(ctx context.Context, userID int64, isOfficial bool) (PublicUser, error) {
+	if _, err := s.users.FindByID(ctx, userID); err != nil {
+		return PublicUser{}, err
+	}
+	if err := s.users.UpdateOfficialStatus(ctx, userID, isOfficial); err != nil {
+		return PublicUser{}, err
+	}
+	return s.Profile(ctx, userID)
+}
+
 // UnbanUser 后台手动解封 APP 用户（清空 banned_until / ban_reason，status 置为正常）。
 func (s *AuthService) UnbanUser(ctx context.Context, userID int64) (PublicUser, error) {
 	if _, err := s.users.FindByID(ctx, userID); err != nil {

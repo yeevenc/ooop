@@ -5,6 +5,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import {
   banUser,
   getUserList,
+  setUserOfficial,
   unbanUser,
   type BanType,
   type UserItem,
@@ -248,6 +249,37 @@ async function handleUnban(row: UserItem) {
   }
 }
 
+async function handleToggleOfficial(row: UserItem) {
+  const name = row.nickname || row.phone || String(row.id)
+  const nextOfficial = !row.is_official
+  try {
+    await ElMessageBox.confirm(
+      nextOfficial
+        ? `将「${name}」设为官方账号？该账号在 App 发布的活动会标记为官方并默认置顶。`
+        : `取消「${name}」的官方身份？取消后新发布的活动不再自动带官方和置顶。`,
+      nextOfficial ? '设为官方' : '取消官方',
+      {
+        type: 'warning',
+        confirmButtonText: '确认',
+        cancelButtonText: '取消',
+      },
+    )
+  } catch {
+    return
+  }
+
+  loading.value = true
+  try {
+    await setUserOfficial(row.id, nextOfficial)
+    ElMessage.success(nextOfficial ? '已设为官方账号' : '已取消官方身份')
+    await getList()
+  } catch {
+    // 错误由请求拦截器统一提示
+  } finally {
+    loading.value = false
+  }
+}
+
 onMounted(() => {
   getList()
 })
@@ -297,9 +329,12 @@ onMounted(() => {
       >
         <el-table-column prop="id" label="ID" width="90" fixed="left" />
         <el-table-column prop="phone" label="手机号" min-width="140" />
-        <el-table-column prop="nickname" label="昵称" min-width="140">
+        <el-table-column prop="nickname" label="昵称" min-width="160">
           <template #default="{ row }">
-            {{ row.nickname || '-' }}
+            <span>{{ row.nickname || '-' }}</span>
+            <el-tag v-if="row.is_official" size="small" type="success" style="margin-left: 8px">
+              官方
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="avatar" label="头像" min-width="90">
@@ -381,9 +416,12 @@ onMounted(() => {
           </template>
         </el-table-column>
         <el-table-column prop="created_at" label="注册时间" min-width="180" />
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="handleEdit(row)">编辑</el-button>
+            <el-button type="warning" link @click="handleToggleOfficial(row)">
+              {{ row.is_official ? '取消官方' : '设为官方' }}
+            </el-button>
             <el-button
               v-if="!isBanned(row)"
               type="danger"

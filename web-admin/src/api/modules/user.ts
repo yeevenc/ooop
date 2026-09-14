@@ -20,6 +20,8 @@ export interface UserItem {
   device_no: string
   push_platform: string
   registration_id: string
+  /** 后台授权的官方账号，App 只认这个字段 */
+  is_official: boolean
   /** 是否已实名认证 */
   is_real_name_verified: boolean
   /** 1 正常 / 0 封禁（APP 用户） */
@@ -87,4 +89,8 @@ export function banUser(id: number, data: BanUserPayload) {
 /** 解封 APP 用户 PUT /admin/users/:id/unban */
 export function unbanUser(id: number) {
   return put<UserItem>(`admin/users/${id}/unban`)
+}
+
+export function setUserOfficial(id: number, isOfficial: boolean) {
+  return put<UserItem>(`admin/users/${id}/official`, { is_official: isOfficial })
 }

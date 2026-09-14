@@ -48,6 +48,45 @@ func TestBanUserPermanentAndUnban(t *testing.T) {
 	}
 }
 
+func TestSetOfficialTogglesFlag(t *testing.T) {
+	repo := newMemoryUserRepository()
+	svc := NewAuthService(AuthServiceOptions{
+		Users: repo,
+		TokenManager: auth.NewTokenManager(config.JWTConfig{
+			Secret:         "test",
+			AccessTokenTTL: time.Hour,
+			Issuer:         "test",
+		}),
+	})
+	item := &User{Phone: "13800000003", Status: UserStatusEnabled, RegisterSource: RegisterSourcePassword}
+	if err := repo.Create(context.Background(), item); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := svc.SetOfficial(context.Background(), item.ID, true)
+	if err != nil {
+		t.Fatalf("set official: %v", err)
+	}
+	if !got.IsOfficial {
+		t.Fatal("expected official user")
+	}
+	profile, err := svc.PublicProfile(context.Background(), item.ID)
+	if err != nil {
+		t.Fatalf("public profile: %v", err)
+	}
+	if !profile.IsOfficial {
+		t.Fatal("public profile should expose official flag")
+	}
+
+	got, err = svc.SetOfficial(context.Background(), item.ID, false)
+	if err != nil {
+		t.Fatalf("unset official: %v", err)
+	}
+	if got.IsOfficial {
+		t.Fatal("expected official flag cleared")
+	}
+}
+
 func TestTemporaryBanAutoUnban(t *testing.T) {
 	repo := newMemoryUserRepository()
 	svc := NewAuthService(AuthServiceOptions{
