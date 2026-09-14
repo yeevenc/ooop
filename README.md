@@ -17,6 +17,8 @@ dist/       打包输出目录
 npm run dev
 ```
 
+后台管理需要 Node 20.19+ 或 22.12+。本机默认 PATH 是鸿蒙 DevEco 的 Node 18，启动脚本只会在本仓库里改用 `/usr/local/bin` 的 Node，不影响其他项目。
+
 该命令会同时启动：
 
 ```text

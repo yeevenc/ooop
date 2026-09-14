@@ -63,6 +63,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&activity.ActivityFavorite{},
 		&activity.ActivityParticipant{},
 		&message.UserMessage{},
+		&message.SystemBroadcast{},
 		&chat.Conversation{},
 		&chat.Message{},
 		&chat.PushTask{},

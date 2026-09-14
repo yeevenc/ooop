@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS system_broadcasts (
+  id bigint NOT NULL AUTO_INCREMENT,
+  admin_id bigint NOT NULL,
+  title varchar(80) NOT NULL,
+  content varchar(500) NOT NULL DEFAULT '',
+  status varchar(16) NOT NULL,
+  target_count int NOT NULL DEFAULT 0,
+  message_count int NOT NULL DEFAULT 0,
+  push_success int NOT NULL DEFAULT 0,
+  push_skipped int NOT NULL DEFAULT 0,
+  push_failed int NOT NULL DEFAULT 0,
+  last_user_id bigint NOT NULL DEFAULT 0,
+  error_message varchar(500) NOT NULL DEFAULT '',
+  started_at datetime(3) NULL,
+  finished_at datetime(3) NULL,
+  created_at datetime(3) NULL,
+  updated_at datetime(3) NULL,
+  PRIMARY KEY (id),
+  KEY idx_system_broadcasts_admin_id (admin_id),
+  KEY idx_system_broadcasts_status (status),
+  KEY idx_system_broadcasts_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

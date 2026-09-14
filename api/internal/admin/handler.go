@@ -12,6 +12,7 @@ import (
 	"ooop-admin-api/internal/chat"
 	"ooop-admin-api/internal/contentmoderation"
 	"ooop-admin-api/internal/httpx"
+	"ooop-admin-api/internal/message"
 	"ooop-admin-api/internal/user"
 )
 
@@ -20,15 +21,17 @@ type Handler struct {
 	appUsers     *user.AuthService
 	activities   *activity.Service
 	chatReports  *chat.ReportService
+	messages     *message.Service
 	tokenManager *auth.TokenManager
 }
 
-func NewHandler(service *Service, appUsers *user.AuthService, activities *activity.Service, chatReports *chat.ReportService, tokenManager *auth.TokenManager) *Handler {
+func NewHandler(service *Service, appUsers *user.AuthService, activities *activity.Service, chatReports *chat.ReportService, messages *message.Service, tokenManager *auth.TokenManager) *Handler {
 	return &Handler{
 		service:      service,
 		appUsers:     appUsers,
 		activities:   activities,
 		chatReports:  chatReports,
+		messages:     messages,
 		tokenManager: tokenManager,
 	}
 }
@@ -65,6 +68,10 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 	protected.GET("/chat-reports", h.chatReportList)
 	protected.GET("/chat-reports/:id", h.chatReportDetail)
 	protected.PUT("/chat-reports/:id/resolve", h.resolveChatReport)
+
+	// 系统通知：按当前正常用户列表写入站内信并双通道 Push
+	protected.GET("/system-broadcasts", h.systemBroadcastList)
+	protected.POST("/system-broadcasts", h.systemBroadcastCreate)
 }
 
 func (h *Handler) login(c *gin.Context) {
@@ -252,6 +259,11 @@ func writeResult(c *gin.Context, data interface{}, err error) {
 		httpx.Fail(c, http.StatusBadRequest, 400001, err.Error())
 	case errors.Is(err, chat.ErrReportProcessed):
 		httpx.Fail(c, http.StatusConflict, 409001, err.Error())
+	case errors.Is(err, message.ErrInvalidBroadcastTitle),
+		errors.Is(err, message.ErrInvalidBroadcastContent):
+		httpx.Fail(c, http.StatusBadRequest, 400001, err.Error())
+	case errors.Is(err, message.ErrBroadcastUnavailable):
+		httpx.Fail(c, http.StatusServiceUnavailable, 503001, err.Error())
 	case errors.Is(err, auth.ErrInvalidToken),
 		errors.Is(err, auth.ErrExpiredToken):
 		httpx.Fail(c, http.StatusUnauthorized, 401002, err.Error())

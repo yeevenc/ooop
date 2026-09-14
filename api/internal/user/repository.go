@@ -16,6 +16,8 @@ type UserRepository interface {
 	FindByPhone(ctx context.Context, phone string) (User, error)
 	FindByUsernameOrPhone(ctx context.Context, account string) (User, error)
 	List(ctx context.Context, query UserListQuery) ([]User, int64, error)
+	CountEnabledForBroadcast(ctx context.Context) (int64, error)
+	ListEnabledForBroadcast(ctx context.Context, afterID int64, limit int) ([]User, error)
 	Create(ctx context.Context, item *User) error
 	UpdatePassword(ctx context.Context, id int64, username string, passwordHash string) error
 	UpdatePhone(ctx context.Context, id int64, phone string) error
@@ -97,6 +99,31 @@ func (r *GormUserRepository) List(ctx context.Context, query UserListQuery) ([]U
 		Limit(query.PageSize).
 		Find(&items).Error
 	return items, total, err
+}
+
+func (r *GormUserRepository) broadcastUserQuery(ctx context.Context) *gorm.DB {
+	return r.db.WithContext(ctx).Model(&User{}).
+		Where("status = ?", UserStatusEnabled).
+		Where("username IS NULL OR username <> ?", ReservedAdminUsername)
+}
+
+func (r *GormUserRepository) CountEnabledForBroadcast(ctx context.Context) (int64, error) {
+	var total int64
+	err := r.broadcastUserQuery(ctx).Count(&total).Error
+	return total, err
+}
+
+func (r *GormUserRepository) ListEnabledForBroadcast(ctx context.Context, afterID int64, limit int) ([]User, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var items []User
+	err := r.broadcastUserQuery(ctx).
+		Where("id > ?", afterID).
+		Order("id ASC").
+		Limit(limit).
+		Find(&items).Error
+	return items, err
 }
 
 func (r *GormUserRepository) Create(ctx context.Context, item *User) error {

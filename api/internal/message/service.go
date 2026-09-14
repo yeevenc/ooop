@@ -16,9 +16,11 @@ import (
 var ErrNotFound = errors.New("消息不存在")
 
 type Service struct {
-	messages Repository
-	pusher   PushSender
-	users    user.UserRepository
+	messages           Repository
+	broadcasts         BroadcastRepository
+	pusher             PushSender
+	users              user.UserRepository
+	broadcastBatchSize int
 }
 
 type PushSender interface {

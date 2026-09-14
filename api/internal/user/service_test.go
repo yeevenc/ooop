@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -585,6 +586,40 @@ func (r *memoryUserRepository) List(ctx context.Context, query UserListQuery) ([
 		end = len(list)
 	}
 	return list[start:end], total, nil
+}
+
+func (r *memoryUserRepository) CountEnabledForBroadcast(ctx context.Context) (int64, error) {
+	items, err := r.ListEnabledForBroadcast(ctx, 0, 1<<20)
+	if err != nil {
+		return 0, err
+	}
+	return int64(len(items)), nil
+}
+
+func (r *memoryUserRepository) ListEnabledForBroadcast(ctx context.Context, afterID int64, limit int) ([]User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	list := make([]User, 0, len(r.items))
+	for _, item := range r.items {
+		if item.ID <= afterID {
+			continue
+		}
+		if item.Status != UserStatusEnabled {
+			continue
+		}
+		if item.Username != nil && strings.EqualFold(*item.Username, ReservedAdminUsername) {
+			continue
+		}
+		list = append(list, item)
+	}
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].ID < list[j].ID
+	})
+	if limit <= 0 || limit > len(list) {
+		return list, nil
+	}
+	return list[:limit], nil
 }
 
 func (r *memoryUserRepository) Create(ctx context.Context, item *User) error {

@@ -4,6 +4,7 @@ import { userRoutes } from '@/router/user'
 import { activityRoutes } from '@/router/activity'
 import { feedbackRoutes } from '@/router/feedback'
 import { chatReportRoutes } from '@/router/chatReport'
+import { systemBroadcastRoutes } from '@/router/systemBroadcast'
 declare module 'vue-router' {
   interface RouteMeta {
     title?: string
@@ -27,6 +28,7 @@ const routes: RouteRecordRaw[] = [
       ...activityRoutes,
       ...feedbackRoutes,
       ...chatReportRoutes,
+      ...systemBroadcastRoutes,
     ],
   },
   {

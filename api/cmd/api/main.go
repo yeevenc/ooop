@@ -89,6 +89,10 @@ func main() {
 	adminService := admin.NewService(adminRepo, passwordHasher, adminTokenManager)
 	activityService := activity.NewService(activityRepo, userRepo, contentChecker)
 	messageService := message.NewService(messageRepo, pushSender, userRepo)
+	broadcastRepo := message.NewGormBroadcastRepository(db)
+	messageService.SetBroadcasts(broadcastRepo, 50)
+	message.NewBroadcastWorker(messageService, 0).Start(context.Background())
+	logger.Infof("系统通知广播已启动")
 	chatService := chat.NewService(chatRepo, userRepo, contentChecker, cfg.Chat.MessageRetention)
 	chatReportService := chat.NewReportService(chatRepo, chatRepo, userRepo, messageService)
 	chatWorker := chat.NewWorker(chatRepo, userRepo, pushSender, chat.WorkerOptions{
@@ -151,7 +155,7 @@ func main() {
 	chat.NewHandler(chatService, chatReportService, tokenManager, authService).Register(api)
 	feedback.NewHandler(feedbackService, tokenManager, adminTokenManager, authService).Register(api)
 	upload.NewHandlerWithConfig(cfg.Qiniu).Register(api)
-	admin.NewHandler(adminService, authService, activityService, chatReportService, adminTokenManager).Register(api)
+	admin.NewHandler(adminService, authService, activityService, chatReportService, messageService, adminTokenManager).Register(api)
 
 	server := &http.Server{
 		Addr:              cfg.HTTP.Addr(),

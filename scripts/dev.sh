@@ -2,6 +2,7 @@
 set -e
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+. "$ROOT_DIR/scripts/use-web-node.sh"
 
 cleanup() {
   if [ -n "$API_PID" ]; then
