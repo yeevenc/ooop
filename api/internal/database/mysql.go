@@ -59,6 +59,9 @@ func AutoMigrate(db *gorm.DB) error {
 		// 旧版 App 分类 ID 兼容表，完成兼容下线流程前必须保留。
 		&activity.ActivityCategoryLegacyID{},
 		&activity.Activity{},
+		&activity.ActivityIntent{},
+		&activity.ActivityIntentCategory{},
+		&activity.IntentNotification{},
 		&activity.ImageAuditTask{},
 		&activity.ActivityFavorite{},
 		&activity.ActivityParticipant{},

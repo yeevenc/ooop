@@ -200,3 +200,8 @@ func parsePositiveID(c *gin.Context, resource string) (int64, bool) {
 	}
 	return id, true
 }
+
+func (h *Handler) activityIntents(c *gin.Context) {
+	items, err := h.activities.ListIntents(c.Request.Context(), 0, c.Query("city"), queryInt(c, "page", 1))
+	writeResult(c, items, err)
+}

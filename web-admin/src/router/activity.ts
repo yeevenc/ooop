@@ -7,6 +7,12 @@ export const activityRoutes: RouteRecordRaw[] = [
     meta: { title: '活动管理', icon: 'Calendar' },
     children: [
       {
+        path: 'activityIntent',
+        name: 'activityIntent',
+        component: () => import('@/views/activity/activityIntent.vue'),
+        meta: { title: '活动意向' },
+      },
+      {
         path: 'activityList',
         name: 'activityList',
         component: () => import('@/views/activity/activityList.vue'),

@@ -85,6 +85,7 @@ type PublicJoinInfo struct {
 }
 
 type Service struct {
+	intents        *IntentStore
 	activities     Repository
 	users          user.UserRepository
 	reviewNotifier ReviewNotifier

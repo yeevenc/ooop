@@ -59,6 +59,7 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 
 	// 活动管理（审核/编辑/上下架/删除）
 	protected.GET("/activities", h.activityList)
+	protected.GET("/activity-intents", h.activityIntents)
 	protected.GET("/activities/:id", h.activityDetail)
 	protected.PUT("/activities/:id", h.activityUpdate)
 	protected.DELETE("/activities/:id", h.activityDelete)

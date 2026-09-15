@@ -74,6 +74,9 @@ func (h *Handler) appAuth() gin.HandlerFunc {
 }
 
 func (h *Handler) Register(api *gin.RouterGroup) {
+	api.GET("/user/activity-intents", h.appAuth(), h.listIntents)
+	api.PUT("/user/activity-intents", h.appAuth(), h.saveIntent)
+	api.DELETE("/user/activity-intents/:id", h.appAuth(), h.cancelIntent)
 	api.GET("/activity-categories", h.listCategories)
 
 	group := api.Group("/activities")
