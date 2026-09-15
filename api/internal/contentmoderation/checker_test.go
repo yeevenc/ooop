@@ -42,6 +42,22 @@ func TestCheckerAllowsCleanContent(t *testing.T) {
 	}
 }
 
+func TestCheckerAllowsGreetingAndCityNames(t *testing.T) {
+	checker, err := NewChecker(nil)
+	if err != nil {
+		t.Fatalf("初始化失败: %v", err)
+	}
+	err = checker.Check(context.Background(), SceneContent,
+		Field{Name: "补充说明", Content: ""},
+		Field{Name: "补充说明", Content: "你好"},
+		Field{Name: "补充说明", Content: "hello"},
+		Field{Name: "城市", Content: "杭州市"},
+	)
+	if err != nil {
+		t.Fatalf("日常问候和城市名应通过，实际错误: %v", err)
+	}
+}
+
 func TestCheckerRejectsNoiseBypass(t *testing.T) {
 	checker, err := NewChecker([]string{"违禁词"})
 	if err != nil {

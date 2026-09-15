@@ -33,6 +33,7 @@ type Checker struct {
 
 // NewChecker 初始化本地过滤器：加载内置词库，并合并自定义禁用词。
 func NewChecker(extraWords []string) (*Checker, error) {
+	// 不加载网易前端库、腾讯临时库、GFW 补充库等：其中含城市名、单字和日常词，误伤「杭州」「你好」。
 	words := appendSensitiveDictionaryWords(
 		nil,
 		sensitive.DictReactionary,
@@ -44,10 +45,6 @@ func NewChecker(extraWords []string) (*Checker, error) {
 		sensitive.DictPeopleLife,
 		sensitive.DictCorruption,
 		sensitive.DictAdditional,
-		sensitive.DictOther,
-		sensitive.DictTemporaryTencent,
-		sensitive.DictGFWAdditional,
-		sensitive.DictNeteaseFE,
 	)
 	for _, word := range extraWords {
 		word = strings.ToLower(strings.TrimSpace(word))

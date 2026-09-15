@@ -11,6 +11,8 @@ import (
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"ooop-admin-api/internal/contentmoderation"
 	"ooop-admin-api/internal/user"
 )
 
@@ -100,7 +102,10 @@ func (s *Service) SaveIntent(ctx context.Context, uid int64, input IntentInput) 
 	if err != nil {
 		return PublicIntent{}, err
 	}
-	if err = s.checkActivityContent(ctx, input.City, input.LocationText, input.Note); err != nil {
+	// 城市和地图地址来自选点逆地理，不走敏感词；只审用户手写的补充说明。
+	if err = s.contentChecker.Check(ctx, contentmoderation.SceneContent,
+		contentmoderation.Field{Name: "补充说明", Content: input.Note},
+	); err != nil {
 		return PublicIntent{}, err
 	}
 	for _, id := range input.CategoryIDs {
