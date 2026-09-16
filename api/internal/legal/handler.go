@@ -3,6 +3,7 @@ package legal
 import (
 	"html/template"
 	"net/http"
+	"regexp"
 
 	"github.com/gin-gonic/gin"
 )
@@ -11,7 +12,14 @@ type Handler struct{}
 
 type pageData struct {
 	Title   string
-	Content string
+	Content template.HTML
+}
+
+var sensitiveMarkup = regexp.MustCompile(`\*\*(.+?)\*\*`)
+
+func highlightSensitive(content string) template.HTML {
+	escaped := template.HTMLEscapeString(content)
+	return template.HTML(sensitiveMarkup.ReplaceAllString(escaped, `<strong class="sensitive">$1</strong>`))
 }
 
 func NewHandler() *Handler {
@@ -30,11 +38,11 @@ func (h *Handler) Register(router *gin.Engine) {
 }
 
 func (h *Handler) userAgreement(c *gin.Context) {
-	renderAgreement(c, "用户协议", UserAgreement)
+	renderAgreement(c, "用户协议", UserAgreement, false)
 }
 
 func (h *Handler) privacyPolicy(c *gin.Context) {
-	renderAgreement(c, "隐私政策", PrivacyPolicy)
+	renderAgreement(c, "隐私政策", PrivacyPolicy, true)
 }
 
 func (h *Handler) userAgreementHead(c *gin.Context) {
@@ -50,12 +58,16 @@ func writeAgreementHead(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
-func renderAgreement(c *gin.Context, title string, content string) {
+func renderAgreement(c *gin.Context, title string, content string, rich bool) {
 	c.Header("Content-Type", "text/html; charset=utf-8")
 	c.Status(http.StatusOK)
+	body := template.HTML(template.HTMLEscapeString(content))
+	if rich {
+		body = highlightSensitive(content)
+	}
 	if err := agreementTemplate.Execute(c.Writer, pageData{
 		Title:   title,
-		Content: content,
+		Content: body,
 	}); err != nil {
 		c.String(http.StatusInternalServerError, "页面渲染失败")
 	}
@@ -121,6 +133,11 @@ var agreementTemplate = template.Must(template.New("agreement").Parse(`<!doctype
       word-break: break-word;
       color: var(--muted);
       font-size: 15px;
+    }
+    .sensitive {
+      color: #b42318;
+      font-weight: 800;
+      font-size: 1.08em;
     }
     @media (min-width: 640px) {
       main {
