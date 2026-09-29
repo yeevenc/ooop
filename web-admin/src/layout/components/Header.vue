@@ -2,8 +2,9 @@
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useTheme, THEMES, setCustomPrimary } from '@/stores/theme'
 import { useOooPUserStore } from '@/stores/user'
-import { Search, SwitchButton, Monitor, Moon, Sunny,ArrowDown } from '@element-plus/icons-vue'
+import { Search, SwitchButton, Monitor, Moon, Sunny, ArrowDown, Lock } from '@element-plus/icons-vue'
 import SearchModal from './SearchModal.vue'
+import ChangePasswordDialog from './ChangePasswordDialog.vue'
 
 const { state, currentPreset, setPreference } = useTheme()
 const userStore = useOooPUserStore()
@@ -11,6 +12,7 @@ const userStore = useOooPUserStore()
 const pickerColor = ref(currentPreset.value.color)
 const avatarLoadFailed = ref(false)
 const searchModalVisible = ref(false)
+const passwordDialogVisible = ref(false)
 
 watch(() => currentPreset.value.color, (val) => { pickerColor.value = val })
 
@@ -34,6 +36,9 @@ function onColorChange(color: string | null) {
 
 function handleCommand(command: string) {
   switch (command) {
+    case 'password':
+      passwordDialogVisible.value = true
+      break
     case 'logout':
       userStore.logout()
       break
@@ -79,6 +84,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
         <kbd class="search-trigger-kbd">Ctrl K</kbd>
       </button>
       <SearchModal v-model:visible="searchModalVisible" />
+      <ChangePasswordDialog v-model:visible="passwordDialogVisible" />
     </div>
 
     <!-- Right: controls -->
@@ -144,6 +150,7 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
         </div>
         <template #dropdown>
           <el-dropdown-menu>
+            <el-dropdown-item command="password" :icon="Lock">修改密码</el-dropdown-item>
             <el-dropdown-item divided command="logout" :icon="SwitchButton">退出登录</el-dropdown-item>
           </el-dropdown-menu>
         </template>

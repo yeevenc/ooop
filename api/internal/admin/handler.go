@@ -42,6 +42,7 @@ func (h *Handler) Register(api *gin.RouterGroup) {
 
 	protected := adminGroup.Group("")
 	protected.Use(Middleware(h.tokenManager))
+	protected.PUT("/auth/password", h.changePassword)
 	protected.GET("/users", h.userList)
 	protected.GET("/users/:id", h.userDetail)
 	protected.PUT("/users/:id", h.updateUser)
@@ -87,6 +88,25 @@ func (h *Handler) login(c *gin.Context) {
 
 	result, err := h.service.Login(c.Request.Context(), req.Username, req.Password)
 	writeResult(c, result, err)
+}
+
+func (h *Handler) changePassword(c *gin.Context) {
+	adminID, exists := c.Get(AdminIDKey)
+	if !exists {
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请先登录后台")
+		return
+	}
+
+	var req struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+	if !bindJSON(c, &req) {
+		return
+	}
+
+	id, _ := adminID.(int64)
+	writeResult(c, nil, h.service.ChangePassword(c.Request.Context(), id, req.OldPassword, req.NewPassword))
 }
 
 func (h *Handler) userList(c *gin.Context) {
@@ -251,6 +271,14 @@ func writeResult(c *gin.Context, data interface{}, err error) {
 	switch {
 	case errors.Is(err, ErrInvalidAccount):
 		httpx.Fail(c, http.StatusUnauthorized, 401003, err.Error())
+	case errors.Is(err, ErrInvalidOldPassword),
+		errors.Is(err, ErrInvalidNewPassword),
+		errors.Is(err, ErrPasswordTooLong),
+		errors.Is(err, ErrSamePassword):
+		// 表单校验失败不能返回 HTTP 401，否则前端会把本次请求当成登录失效并退出。
+		httpx.Fail(c, http.StatusBadRequest, 400003, err.Error())
+	case errors.Is(err, ErrNotFound):
+		httpx.Fail(c, http.StatusUnauthorized, 401001, "请重新登录")
 	case errors.Is(err, ErrDisabledAdmin):
 		httpx.Fail(c, http.StatusForbidden, 403001, err.Error())
 	case errors.Is(err, contentmoderation.ErrRejected):
